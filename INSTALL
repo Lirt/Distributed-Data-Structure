@@ -1,0 +1,6 @@
+/usr/lib64/openmpi/bin/mpicc -o test test.c
+
+gcc -Wall -o test -I/usr/include/openmpi-x86_64/ -I/usr/lib64/openmpi/ test.c
+
+mpirun --map-by core ./test
+mpirun -npernode 4 ./test
