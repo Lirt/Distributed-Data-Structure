@@ -1,0 +1,14 @@
+#Running multiple executables with mpirun
+mpirun host_a -np 6 a.out : host_a -nt 4 b.out
+
+#using hostfile
+mpirun -hostfile myhostfile ./a.out
+
+#hostfile template
+% cat myhostfile
+aa slots=2
+bb slots=2
+cc slots=2
+
+#
+for (i=id, sum[id]=0.0;i< num_steps; i=i+nthrds) {

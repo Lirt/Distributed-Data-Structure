@@ -2,5 +2,7 @@
 
 gcc -Wall -o test -I/usr/include/openmpi-x86_64/ -I/usr/lib64/openmpi/ test.c
 
+mpirun -np 1 rng_master : -np 4 rng_client
+mpirun localhost -np 1 rng_master : localhost -np 4 rng_client
 mpirun --map-by core ./test
 mpirun -npernode 4 ./test
