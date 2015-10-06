@@ -1,5 +1,12 @@
-CC=mpicc
+MPICC=mpicc
+GCC=gcc
 
-all: 
-	$(CC) rng_master.c -o rng_master
-	$(CC) rng_client.c -o rng_client
+all: rng_client.o ds_stack.o
+	$(MPICC) rng_master.c -o rng_master
+	$(MPICC) rng_client.o ds_stack.o -o rng_client
+
+rng_client.o: rng_client.c
+	$(MPICC) -c rng_client.c
+
+ds_stack.o: ds_stack.c
+	$(MPICC) -c ds_stack.c

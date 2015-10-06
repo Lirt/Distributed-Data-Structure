@@ -68,6 +68,7 @@ int main(int argc, char** argv) {
 	int buf;
 	int count = 1;
 	int i = 0;
+	time_t t = time(NULL);
 	while(1) {
 		for(i = 0; i < size; i++) {
 			rn = generateRandomNumber(min, max);
@@ -77,8 +78,21 @@ int main(int argc, char** argv) {
 				usleep(timeout);
 			}
 		}
+		if ( time(NULL) - t > 15 ) {
+			break;
+		}
 	}
 
+
+	//END CLIENTS(-1)
+	for(i = 0; i < size; i++) {
+		rn = -1;
+		if ( i != rank ) {
+			printf("Node %d: Sending number '%d' to node '%d'\n", rank, rn, i);
+			MPI_Send(&rn, count, MPI_INT, i, 1, MPI_COMM_WORLD);
+			usleep(timeout);
+		}
+	}
 
 
 	rc = MPI_Finalize();

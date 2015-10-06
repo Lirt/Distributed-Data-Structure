@@ -12,3 +12,27 @@ cc slots=2
 
 #
 for (i=id, sum[id]=0.0;i< num_steps; i=i+nthrds) {
+
+###
+time.h:
+133 struct tm
+134 {
+135   int tm_sec;        /* Seconds. [0-60] (1 leap second) */
+136   int tm_min;        /* Minutes. [0-59] */
+137   int tm_hour;       /* Hours.   [0-23] */
+138   int tm_mday;       /* Day.     [1-31] */
+139   int tm_mon;        /* Month.   [0-11] */
+140   int tm_year;       /* Year  - 1900.  */
+141   int tm_wday;       /* Day of week.   [0-6] */
+142   int tm_yday;       /* Days in year.[0-365] */
+143   int tm_isdst;         /* DST.     [-1/0/1]*/
+144 
+145 # ifdef  __USE_MISC
+146   long int tm_gmtoff;      /* Seconds east of UTC.  */
+147   const char *tm_zone;     /* Timezone abbreviation.  */
+148 # else
+149   long int __tm_gmtoff;    /* Seconds east of UTC.  */
+150   const char *__tm_zone;   /* Timezone abbreviation.  */
+151 # endif
+152 };
+
