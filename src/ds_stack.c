@@ -18,6 +18,11 @@
 	#include "omp.h"
 #endif
 
+#ifndef PTHREAD_H
+#define PTHREAD_H
+	#include <pthread.h>
+#endif
+
 
 /*
 typedef struct {
@@ -25,22 +30,23 @@ typedef struct {
 } ds_stack;
 */
 
+/*
+ * GLOBAL VARIABLES
+ */
+pthread_mutex_t stack_lock;
+
 int push_to_stack(struct ds_stack *stack, int num) {
 
 	int top;
-	#pragma omp critical
-	{
-		stack->top += 1;
-		top = stack->top;
-		stack->numbers = (int*) realloc(stack->numbers, (top) * sizeof(int) );
+
+	stack->top += 1;
+	top = stack->top;
+	stack->numbers = (int*) realloc(stack->numbers, (top) * sizeof(int) );
+	if (stack->numbers == NULL) {
+		return -1;
 	}
-		if (stack->numbers == NULL) {
-			return -1;
-		}
-	#pragma omp critical
-	{
-		stack->numbers[top - 1] = num;
-	}
+	stack->numbers[top - 1] = num;
+	
 	return 0;	
 
 }
@@ -48,16 +54,11 @@ int push_to_stack(struct ds_stack *stack, int num) {
 int pop_from_stack(struct ds_stack *stack, int *num_pointer) {
 
 	int top;
-	#pragma omp critical
-	{
-		top = stack->top;
-	}
+	
+	top = stack->top;
 	if ( top > 0 ) {
-		#pragma omp critical
-		{
-			*num_pointer = stack->numbers[top - 1];
-			stack->top -= 1;
-		}
+		*num_pointer = stack->numbers[top - 1];
+		stack->top -= 1;
 		return 0;
 	}
 	else {
@@ -73,6 +74,12 @@ struct ds_stack *init_stack(void) {
 	//}
 	stack->top = 0;
 	stack->numbers = NULL;
+
+	pthread_attr_t attr;
+	pthread_mutex_init(&stack_lock, NULL);
+	pthread_attr_init(&attr);
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
 
 	return stack;
 }
