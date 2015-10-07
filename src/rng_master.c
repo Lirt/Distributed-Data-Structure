@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
 	 * PROGRAM
 	 */
 	int rn = 0;
+	int tag;
 	int buf;
 	int count = 1;
 	int i = 0;
@@ -72,9 +73,10 @@ int main(int argc, char** argv) {
 	while(1) {
 		for(i = 0; i < size; i++) {
 			rn = generateRandomNumber(min, max);
+			tag = generateRandomNumber(0, 2);	//FOR ADDRESSING THREADS
 			if ( i != rank ) {
-				printf("Node %d: Sending number '%d' to node '%d'\n", rank, rn, i);
-				MPI_Send(&rn, count, MPI_INT, i, 1, MPI_COMM_WORLD);
+				printf("Node %d: Sending number '%d' to node '%d' thread '%d'\n", rank, rn, i, tag);
+				MPI_Send(&rn, count, MPI_INT, i, tag, MPI_COMM_WORLD);
 				usleep(timeout);
 			}
 		}

@@ -67,6 +67,15 @@ int main(int argc, char** argv) {
 	 */
 	struct ds_stack *stack = init_stack();
 
+	/*
+	 *
+	 */
+	int maxthreads = omp_get_max_threads();
+	omp_set_dynamic(0);
+	omp_set_num_threads(2);
+	int nthreads = omp_get_num_threads();
+	int tid;
+
 
 	/*
 	 * PROGRAM
@@ -74,18 +83,23 @@ int main(int argc, char** argv) {
 	int buf;
 	int count = 1;
 	MPI_Status status;
-	printf("Node %d: Receiving numbers from node '0'\n", rank);
-	while(1) {
-		MPI_Recv(&buf, count, MPI_INT, 0, 1, MPI_COMM_WORLD, &status);
-		if (buf == -1) {
-			//CLIENTS END WHEN RECEIVED NUMBER IS -1
-			printf("Node %d: END###\n", rank);
-			break;
-		}
-		printf("Node %d: Number '%d' received\n", rank, buf);
-		push_to_stack(stack, buf);
-	}
+	//printf("Node %d: Receiving numbers from node '0'\n", rank);
 
+	#pragma omp parallel private(tid, buf)
+	{
+		tid = omp_get_thread_num();
+		printf("Hello Node %d | Thread %d\n", rank, tid);
+		while(1) {
+			MPI_Recv(&buf, count, MPI_INT, 0, tid, MPI_COMM_WORLD, &status);
+			if (buf == -1) {
+				//CLIENTS END WHEN RECEIVED NUMBER IS -1
+				printf("Node %d: END###\n", rank);
+				break;
+			}
+			printf("Node %d | Thread %d: Number '%d' received\n", rank, tid, buf);
+			push_to_stack(stack, buf);
+		}
+	}
 
 	//PRINT STACK
 	//int *num = (int *) malloc(sizeof(int));
