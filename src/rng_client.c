@@ -1,27 +1,26 @@
-#include <stdio.h>
 #include <math.h>
+#include <stdio.h>
 #include <time.h>
 #include <unistd.h>
 
-#ifndef STDLIB_H
-#define STDLIB_H
-	#include <stdlib.h>
+#ifndef DS_DEBUG_H
+   #define DS_DEBUG_H
+   #include "ds_debug.h"
 #endif
 
-//DS LIB
 #ifndef DS_STACK_H
-#define DS_STACK_H
+   #define DS_STACK_H
 	#include "ds_stack.h"
 #endif
 
 #ifndef MPI_H
-#define MPI_H
+   #define MPI_H
 	#include "mpi.h"
 #endif
 
-#ifndef OMP_H
-#define OMP_H
-	#include "omp.h"
+#ifndef STDLIB_H
+   #define STDLIB_H
+	#include <stdlib.h>
 #endif
 
 
@@ -38,6 +37,9 @@ int main(int argc, char** argv) {
 	int required = MPI_THREAD_SERIALIZED;	
 	int provided;
 
+   /*
+    * MPI THREAD SUPPORT INIT
+    */
 	rc = MPI_Init_thread(&argc, &argv, required, &provided);
 	if (rc != MPI_SUCCESS) {
 		printf("Error in thread init\n");
@@ -67,10 +69,17 @@ int main(int argc, char** argv) {
 	 */
 	struct ds_stack *stack = init_stack();
 
+   
 	/*
 	 * THREADS
 	 */
-	//pthread_t threads[2];
+	//struct thread_pop_data {
+	//	struct *ds_stack;
+	//	int buf;
+	//}
+	pthread_t threads[2];
+	struct thread_pop_data *tpd;
+	tpd = (struct thread_pop_data*) malloc (sizeof(struct thread_pop_data));
 
 	/*
 	 * PROGRAM
@@ -90,6 +99,11 @@ int main(int argc, char** argv) {
 			break;
 		}
 		printf("Node %d | Thread %d: Number '%d' received\n", rank, tid, buf);
+		//tpd->buf = buf;
+		//tpd->ds_stack = stack;
+		//for (int j = 0; j < 2; j++) {
+		//	rc = pthread_create(&threads[i], NULL, push_to_stack, (void*) tpd)
+		//}
 		push_to_stack(stack, buf);
 	}
 

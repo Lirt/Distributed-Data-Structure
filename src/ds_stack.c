@@ -1,26 +1,26 @@
-#ifndef STDLIB_H
-#define STDLIB_H
-	#include <stdlib.h>
+#ifndef DS_DEBUG_H
+   #define DS_DEBUG_H
+   #include "ds_debug.h"
 #endif
 
 #ifndef DS_STACK_H
-#define DS_STACK_H
+   #define DS_STACK_H
 	#include "ds_stack.h"
 #endif
 
 #ifndef MPI_H
-#define MPI_H
+   #define MPI_H
 	#include "mpi.h"
 #endif
 
-#ifndef OMP_H
-#define OMP_H
-	#include "omp.h"
+#ifndef PTHREAD_H
+   #define PTHREAD_H
+	#include <pthread.h>
 #endif
 
-#ifndef PTHREAD_H
-#define PTHREAD_H
-	#include <pthread.h>
+#ifndef STDLIB_H
+   #define STDLIB_H
+	#include <stdlib.h>
 #endif
 
 
@@ -30,41 +30,26 @@ typedef struct {
 } ds_stack;
 */
 
+
 /*
  * GLOBAL VARIABLES
  */
 pthread_mutex_t stack_lock;
 
-int push_to_stack(struct ds_stack *stack, int num) {
 
-	int top;
 
-	stack->top += 1;
-	top = stack->top;
-	stack->numbers = (int*) realloc(stack->numbers, (top) * sizeof(int) );
-	if (stack->numbers == NULL) {
-		return -1;
-	}
-	stack->numbers[top - 1] = num;
-	
-	return 0;	
+/*
+ * FUNCTIONS
+ */
+int destroy_stack(struct ds_stack *stack) {
 
-}
+	pthread_mutex_destroy(&stack_lock);
+	free(stack->number);
+	free(stack);
 
-int pop_from_stack(struct ds_stack *stack, int *num_pointer) {
+	return 0;
+} 
 
-	int top;
-	
-	top = stack->top;
-	if ( top > 0 ) {
-		*num_pointer = stack->numbers[top - 1];
-		stack->top -= 1;
-		return 0;
-	}
-	else {
-		return -1;
-	}
-}
 
 struct ds_stack *init_stack(void) {
 
@@ -73,14 +58,278 @@ struct ds_stack *init_stack(void) {
 	//	return NULL;
 	//}
 	stack->top = 0;
-	stack->numbers = NULL;
+	stack->number = NULL;
 
 	pthread_attr_t attr;
 	pthread_mutex_init(&stack_lock, NULL);
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-
 	return stack;
+}
+ 
+
+int pop_from_stack(struct ds_stack *stack, int *num_pointer) {
+
+	int top;
+	int ret_val = 0;
+	
+	//pthread_mutex_lock(stack_lock);
+	top = stack->top;
+	if ( top > 0 ) {
+		*num_pointer = stack->number[top - 1];
+		stack->top -= 1;
+	}
+	else {
+		ret_val = -1;
+	}
+
+	//pthread_mutex_unlock(stack_lock);
+	return ret_val;
+
+}
+
+
+int push_to_stack(struct ds_stack *stack, int num) {
+
+	int top;
+
+	//pthread_mutex_lock(stack_lock);
+	stack->top += 1;
+	top = stack->top;
+	stack->number = (int*) realloc(stack->number, (top) * sizeof(int) );
+	if (stack->number == NULL) {
+		//pthread_mutex_unlock(stack_lock);
+		return -1;
+	}
+	
+	stack->number[top - 1] = num;
+
+	//pthread_mutex_unlock(stack_lock);
+	return 0;	
+
+}
+
+
+
+
+
+/*
+ * DISTRIBUTED QUEUE
+ */
+ 
+struct ds_queue_local *init_queue (void) {
+   
+   struct ds_queue_local *queue = (struct ds_queue_local*) malloc ( sizeof ( struct ds_queue_local ) );
+   queue->head = queue->tail = NULL;
+   queue->count = 0;
+   
+   return queue;
+}
+
+void destroy_queue (struct ds_queue_local *queue) {
+   
+   if (queue == NULL)
+      return;
+      
+   if (queue->head == NULL && queue->tail == NULL) {
+      free(queue);
+      return;
+   }
+   
+   struct queue_item *queue_item_current = queue->head;
+   struct queue_item *queue_item_tmp = NULL;
+   
+   while (queue_item_current->next != NULL) {
+      
+      queue_item_tmp = queue_item_current->next;
+      free(queue_item_current);
+      queue_item_current = queue_item_tmp;
+      
+   }
+   
+   free(queue_item_current);
+   free(queue);
+   
+}
+
+void insert_item_queue (struct ds_queue_local *queue, void* item) {
+   
+
+   
+}
+
+int queue_size (struct ds_queue_local *queue) {
+   
+   return queue->count;
+   
+}
+
+void* remove_item_queue (struct ds_queue_local *queue) {
+   
+   if (queue == NULL)
+      //Not initialized
+      return NULL;
+      
+   if (queue->head == NULL)
+      //Empty queue
+      return NULL;
+      
+   if (queue->head->next == NULL)
+      //Only one item in queue
+      //TODO
+      //Problem ak je jeden item v Q. Vtedy treba synchronizaciu
+      return NULL;
+   
+
+   struct queue_item *queue_item_tmp = queue->head;
+   void* item = queue_item_tmp->item;
+   
+   queue->head = queue->head->next;  
+   free(queue_item_tmp);
+   
+   return item;
+   
+}
+
+void* remove_all_items_queue (struct ds_queue_local *queue) {
+   
+   return ??;
+   
+}
+ 
+
+/*****
+ * Lock-free queue
+ ***
+ *
+ *
+ * GLOBAL VARIABLES
+ */
+
+struct ds_lockfree_queue **queues;
+int queue_count = 0;
+#include <sys/sysinfo.h>
+
+//struct ds_lockfree_queue *init_queue (int thread_count) {
+void ds_lockfree_queue *init_queue () {
+
+   int i = 0;
+   int numCPU1 = get_nprocs();
+   int numCPU2 = sysconf( _SC_NPROCESSORS_ONLN );
+   printf("Number of cpus by get_nprocs is : %d\n", numCPU1);
+   printf("Number of cpus by _SC_NPROCESSORS_ONLN is : %d\n", numCPU2);
+   
+   queue = (struct ds_lockfree_queue**) malloc ( numCPU1 * sizeof(struct ds_lockfree_queue) );
+   for (i = 0; i < numCPU1; i++) {
+      queue[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
+   }
+   
+   for (i = 0; i < numCPU1; i++) {
+      queue[i]->head = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
+      queue[i]->tail = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
+      queue[i]->divider = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
+      queue[i]->count = 0;
+   }
+    
+}
+
+void destroy_lockfree_queue () {
+   
+}
+
+int lockfree_queue_size (struct ds_lockfree_queue *queue) {
+   
+}
+
+int lockfree_queue_size_total () {
+   
+}
+
+bool is_lockfree_queue_empty(struct ds_lockfree_queue *queue) {
+   
+}
+
+bool is_lockfree_queue_empty_all() {
+   
+}
+
+void insert_item_by_q_lockfree_queue (struct ds_lockfree_queue *q, void* val) {
+   
+   //init
+   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
+   item->val = val;
+   
+   //swap
+   q->tail->next = item;
+   q->tail = q->tail->next   //cmp_and_swp?
+   
+   //cleanup
+   struct lockfree_queue_item *tmp;
+   while( q->head != q->divider ) {
+      *tmp = q->head;
+      q->head = q->head->next;
+      free(tmp);
+   }
+   
+}
+
+void insert_item_by_tid_lockfree_queue (int tid, void* val) {
+   
+   struct ds_lockfree_queue *q = queues[tid % queue_count]; //?
+   
+   struct lockfree_queue_item item = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
+   item->val = val;
+   
+   //swap
+   q->tail->next = item;
+   q->tail = q->tail->next   //cmp_and_swp?
+   
+   //cleanup
+   struct lockfree_queue_item *tmp;
+   while ( q->head != q->divider ) {
+      *tmp = q->head;
+      q->head = q->head->next;
+      free(tmp);
+   }
+   
+}
+
+void* remove_item_by_q_lockfree_queue (struct ds_lockfree_queue *q) {
+   
+   int val = NULL;
+   
+   if ( q->divider != q->tail ) {   //atomic reads?
+      val = q->divider->next->val;
+      q->divider = q->divider->next;
+      return q->divider->val;
+   }
+   else {
+      return val;
+   }
+   
+}
+
+void* remove_item_by_tid_lockfree_queue (int tid) {
+
+   int val = NULL;
+   struct ds_lockfree_queue *q = queues[tid % queue_count]; //?
+   
+   if ( q->divider != q->tail ) {   //atomic reads?
+      val = q->divider->next->val;
+      q->divider = q->divider->next;
+      return q->divider->val;
+   }
+   else {
+      return val;
+   }
+   
+}
+void* remove_all_items_lockfree_queue (struct ds_lockfree_queue *queue) {
+   
+}
+
+void* remove_all_items_lockfree_queues () {
+   
 }
 
