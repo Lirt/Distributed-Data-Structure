@@ -78,8 +78,8 @@ int main(int argc, char** argv) {
 	//	int buf;
 	//}
 	pthread_t threads[2];
-	struct thread_pop_data *tpd;
-	tpd = (struct thread_pop_data*) malloc (sizeof(struct thread_pop_data));
+	//struct thread_pop_data *tpd;
+	//tpd = (struct thread_pop_data*) malloc (sizeof(struct thread_pop_data));
 
 	/*
 	 * PROGRAM

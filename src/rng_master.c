@@ -11,6 +11,10 @@
 #include <time.h>
 #include <unistd.h>
 
+
+FILE *log_file;
+
+
 int generateRandomNumber(int rangeMin, int rangeMax) {
 	
 	int r = rand() % rangeMax + rangeMin;
@@ -18,10 +22,16 @@ int generateRandomNumber(int rangeMin, int rangeMax) {
 
 }
 
-void init() {
+void init(char* path, char* filename) {
 
-	srand(time(NULL));
-   log_file = fopen(strcat(path,filename), "a");
+   srand(time(NULL));
+   
+   char *log_path = (char*) malloc ( (strlen(path) + strlen(filename)) * sizeof(char));
+   strcat(log_path, path);
+   strcat(log_path, filename);   
+   log_file = fopen(log_path, "ab+");
+   
+   printf("successfull init\n");
 
 }
 
@@ -29,13 +39,16 @@ void testLogging() {
    /*
     * tests logging functions
     */
-   char* path = "/home/ovasko/Dropbox/Skola/DP/program/log/";
-   char* filename = "rng_logging_test.log";
    time_t t;
    
-   LOG_DEBUG(ctime(&t), '0', "Just a test DEBUG message %d.", 1);
-   LOG_CRIT(ctime(&t), 0, "Critical Error!");
-   LOG_ERR(ctime(&t), 1, "Error in ...");
+   time(&t);
+   char* time = ctime(&t);
+   if ( time[strlen(time) - 1] == '\n' ) 
+      time[strlen(time) - 1] = '\0';
+   
+   LOG_DEBUG(time, 0, "Just a test DEBUG message.");
+   LOG_CRIT(time, "Critical Error!");
+   LOG_ERR(time, "Error in ...");
    LOG_INFO("Logging messages works!");
    
 }
@@ -49,12 +62,16 @@ int main(int argc, char** argv) {
 	int max = 9;            //maximum value for generated random numbers
 	int timeout = 500000;	//timeout between sending in microseconds
 
+
+   char* path = "/home/ovasko/Dropbox/Skola/DP/program/log/";
+   char* filename = "rng_logging_test.log";
+   
    /*
     * INIT
     */
-   init();
+   init(path, filename);
    testLogging();
-
+   
 	/*
     * MPI CONFIG
     */
@@ -117,7 +134,7 @@ int main(int argc, char** argv) {
    while(1) {
       for(i = 0; i < size; i++) {
 			if ( i != rank ) {
-				printf("Node %d: Sending stop message to node '%d'\n", rank, rn, i);
+				printf("Node %d: Sending stop message to node '%d'\n", rank, i);
 				MPI_Send(0, 1, MPI_INT, i, tag, MPI_COMM_WORLD);
 				//usleep(timeout);
 			}
@@ -131,7 +148,7 @@ int main(int argc, char** argv) {
 	for(i = 0; i < size; i++) {
 		if ( i != rank ) {
 			printf("Node %d: Sending shutdown message to node '%d'\n", rank, i);
-			MPI_Send(-1, 1, MPI_INT, i, tag, MPI_COMM_WORLD);
+			MPI_Send( (int*) -1, 1, MPI_INT, i, tag, MPI_COMM_WORLD);
 			//usleep(timeout);
 		}
 	}

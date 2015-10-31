@@ -1,3 +1,14 @@
+
+#ifndef PTHREAD_H
+   #define PTHREAD_H
+   #include <pthread.h>
+#endif
+
+#ifndef STDBOOL_H
+   #define STDBOOL_H
+   #include <stdbool.h>
+#endif
+
 /*
  * DISTRIBUTED STACK
  */
@@ -57,20 +68,6 @@ extern void* remove_all_items_queue (struct ds_queue_local *queue);
  */
  
 /*
- * Lock-Free Queue struct
- */
-#ifndef DS_LOCKFREE_QUEUE
-   #define DS_LOCKFREE_QUEUE
-	struct ds_lockfree_queue {
-		int count;
-      //int max;
-      struct queue_item *head;
-      struct queue_item *tail;
-      struct queue_item *divider;
-	};
-#endif 
-
-/*
  * QUEUE ITEM
  */
 #ifndef LOCKFREE_QUEUE_ITEM
@@ -81,21 +78,37 @@ extern void* remove_all_items_queue (struct ds_queue_local *queue);
 	};
 #endif
  
+/*
+ * Lock-Free Queue struct
+ */
+#ifndef DS_LOCKFREE_QUEUE
+   #define DS_LOCKFREE_QUEUE
+	struct ds_lockfree_queue {
+		int count;
+      //int max;
+      struct lockfree_queue_item *head;
+      struct lockfree_queue_item *tail;
+      struct lockfree_queue_item *divider;
+	};
+#endif 
+
+
 //typedef struct ds_queue_local queue;
 
 extern struct ds_lockfree_queue **queues;
 extern int queue_count;
 
-extern struct ds_lockfree_queue *init_queue (void);
+//extern struct ds_lockfree_queue *init_queue (void);
+extern void init_lockfree_queue (void);
 extern void destroy_lockfree_queue (void);
 extern int lockfree_queue_size (struct ds_lockfree_queue *queue);
 extern int lockfree_queue_size_total (void);
-extern bool is_lockfree_queue_empty(struct ds_lockfree_queue *queue);
+extern bool lockfree_queue_empty(void);
 extern bool is_lockfree_queue_empty_all(void);
 extern void insert_item_by_q_lockfree_queue (struct ds_lockfree_queue *q, void* item);
-extern void insert_item_by_tid_lockfree_queue (int tid, void* val);
+extern void insert_item_by_tid_lockfree_queue (void* tid, void* val);
 extern void* remove_item_by_q_lockfree_queue (struct ds_lockfree_queue *q);
-extern void* remove_item_by_tid_lockfree_queue (int tid);
+extern void* remove_item_by_tid_lockfree_queue (void* tid, int timeout);
 extern void* remove_all_items_lockfree_queue (struct ds_lockfree_queue *q);
 extern void* remove_all_items_lockfree_queues ();
  

@@ -23,6 +23,15 @@
 	#include <stdlib.h>
 #endif
 
+#ifndef STDBOOL_H
+   #define STDBOOL_H
+   #include <stdbool.h>
+#endif
+
+#ifndef UNISTD_H
+   #define UNISTD_H
+   #include <unistd.h>
+#endif
 
 /*
 typedef struct {
@@ -194,7 +203,9 @@ void* remove_item_queue (struct ds_queue_local *queue) {
 
 void* remove_all_items_queue (struct ds_queue_local *queue) {
    
-   return ??;
+   //return ??;
+   
+   return NULL;
    
 }
  
@@ -212,84 +223,98 @@ int queue_count = 0;
 #include <sys/sysinfo.h>
 
 //struct ds_lockfree_queue *init_queue (int thread_count) {
-void ds_lockfree_queue *init_queue () {
-
+void init_lockfree_queue (void) {
+   
+   /*
+    * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
+    */
+   
    int i = 0;
-   int numCPU1 = get_nprocs();
-   int numCPU2 = sysconf( _SC_NPROCESSORS_ONLN );
-   printf("Number of cpus by get_nprocs is : %d\n", numCPU1);
-   printf("Number of cpus by _SC_NPROCESSORS_ONLN is : %d\n", numCPU2);
+   queue_count = get_nprocs();
+  
+   printf("Number of cpus by get_nprocs is : %d\n", queue_count);
+
+   //int numCPU2 = sysconf( _SC_NPROCESSORS_ONLN );
+   //printf("Number of cpus by _SC_NPROCESSORS_ONLN is : %d\n", numCPU2);
    
-   queue = (struct ds_lockfree_queue**) malloc ( numCPU1 * sizeof(struct ds_lockfree_queue) );
-   for (i = 0; i < numCPU1; i++) {
-      queue[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
+   //struct ds_lockfree_queue **queue;
+   queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
+   for (i = 0; i < queue_count; i++) {
+      queues[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
    }
    
-   for (i = 0; i < numCPU1; i++) {
-      queue[i]->head = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
-      queue[i]->tail = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
-      queue[i]->divider = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
-      queue[i]->count = 0;
+   for (i = 0; i < queue_count; i++) {
+      queues[i]->head = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+      queues[i]->tail = queues[i]->head;
+      queues[i]->divider = queues[i]->head;
+      queues[i]->count = 0;
    }
+   
+   printf("Queue initialized\n");
     
 }
 
 void destroy_lockfree_queue () {
-   
+   return;
 }
 
 int lockfree_queue_size (struct ds_lockfree_queue *queue) {
-   
+   return 0;
 }
 
 int lockfree_queue_size_total () {
-   
+   return 0;
 }
 
-bool is_lockfree_queue_empty(struct ds_lockfree_queue *queue) {
+bool lockfree_queue_empty() {
    
+   
+   
+   return true;
 }
 
 bool is_lockfree_queue_empty_all() {
-   
+   return true;
 }
 
 void insert_item_by_q_lockfree_queue (struct ds_lockfree_queue *q, void* val) {
    
    //init
-   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
+   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    item->val = val;
    
    //swap
    q->tail->next = item;
-   q->tail = q->tail->next   //cmp_and_swp?
+   q->tail = q->tail->next;   //cmp_and_swp?
    
    //cleanup
    struct lockfree_queue_item *tmp;
    while( q->head != q->divider ) {
-      *tmp = q->head;
+      tmp = q->head;
       q->head = q->head->next;
       free(tmp);
    }
    
 }
 
-void insert_item_by_tid_lockfree_queue (int tid, void* val) {
-   
-   struct ds_lockfree_queue *q = queues[tid % queue_count]; //?
-   
-   struct lockfree_queue_item item = (struct lockfree_queue_item*) malloc (sizeof(lockfree_queue_item));
+void insert_item_by_tid_lockfree_queue (void* tid, void* val) {
+
+   long *t = tid;
+   struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
+
+   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    item->val = val;
    
    //swap
    q->tail->next = item;
-   q->tail = q->tail->next   //cmp_and_swp?
+   q->tail = q->tail->next;   //cmp_and_swp?
    
    //cleanup
    struct lockfree_queue_item *tmp;
    while ( q->head != q->divider ) {
-      *tmp = q->head;
+      tmp = q->head;
       q->head = q->head->next;
+      free(tmp->val);
       free(tmp);
    }
    
@@ -297,12 +322,12 @@ void insert_item_by_tid_lockfree_queue (int tid, void* val) {
 
 void* remove_item_by_q_lockfree_queue (struct ds_lockfree_queue *q) {
    
-   int val = NULL;
+   void *val = NULL;
    
    if ( q->divider != q->tail ) {   //atomic reads?
       val = q->divider->next->val;
       q->divider = q->divider->next;
-      return q->divider->val;
+      return val;
    }
    else {
       return val;
@@ -310,26 +335,35 @@ void* remove_item_by_q_lockfree_queue (struct ds_lockfree_queue *q) {
    
 }
 
-void* remove_item_by_tid_lockfree_queue (int tid) {
+void* remove_item_by_tid_lockfree_queue (void* tid, int timeout) {
 
-   int val = NULL;
-   struct ds_lockfree_queue *q = queues[tid % queue_count]; //?
+   /*
+    * tid should be tid of inserting thread - 1
+    * timeout is in microseconds
+    */
+   
+   void* val = NULL;
+   long* t = tid;
+   
+   //printf("tid=%ld", *t);
+   struct ds_lockfree_queue *q = queues[ (*t - 1) % queue_count]; //modulo ok?
+   
+   if (timeout > 0)
+      usleep(timeout);
    
    if ( q->divider != q->tail ) {   //atomic reads?
       val = q->divider->next->val;
       q->divider = q->divider->next;
-      return q->divider->val;
    }
-   else {
-      return val;
-   }
+   
+   return val;
    
 }
 void* remove_all_items_lockfree_queue (struct ds_lockfree_queue *queue) {
-   
+   return NULL;
 }
 
 void* remove_all_items_lockfree_queues () {
-   
+   return NULL;
 }
 
