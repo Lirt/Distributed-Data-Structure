@@ -5,12 +5,12 @@
 
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
-   #include "ds_debug.h"
+   #include "../include/ds_debug.h"
 #endif
 
 #ifndef DS_STACK_H
    #define DS_STACK_H
-	#include "ds_stack.h"
+	#include "../include/ds_stack.h"
 #endif
 
 #ifndef MPI_H

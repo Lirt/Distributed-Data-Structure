@@ -5,12 +5,12 @@
 
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
-   #include "ds_debug.h"
+   #include "../include/ds_debug.h"
 #endif
 
 #ifndef DS_STACK_H
    #define DS_STACK_H
-	#include "ds_stack.h"
+	#include "../include/ds_stack.h"
 #endif
 
 #ifndef MPI_H
@@ -46,7 +46,7 @@ void *producer(void *threadid) {
       int *rn = (int*) malloc (sizeof(int));
       *rn = generateRandomNumber(1,1000000);
       
-      insert_item_by_tid_lockfree_queue (tid, rn);
+      lockfree_queue_insert_item_by_tid (tid, rn);
       if ( fprintf(in, "%d\n", *rn) < 0 ) 
          printf("ERROR: fprintf failed\n");
       add_count++;
@@ -62,6 +62,8 @@ void *producer(void *threadid) {
 void *consumer(void *threadid) {
    
    long *tid = threadid;
+   *tid = *tid - 1;
+   
    int *retval;
    int timeout = 0;
    FILE *out = fopen("out.txt", "ab+");
@@ -76,7 +78,7 @@ void *consumer(void *threadid) {
    
    //for (int i = 0; i < 1000000; i++) {
    while (rem_count < 1000000) {
-      retval = remove_item_by_tid_lockfree_queue (tid, timeout);
+      retval = lockfree_queue_remove_item_by_tid (tid, timeout);
       if (retval != NULL) {
          if ( fprintf(out, "%d\n", *retval) < 0 )
             printf("ERROR: fprintf failed\n");
@@ -98,7 +100,7 @@ int main(int argc, char** argv) {
    
    
    //struct ds_lockfree_queue *queue
-   init_lockfree_queue();
+   lockfree_queue_init();
    
    pthread_t threads[2];
    long t_num[2];

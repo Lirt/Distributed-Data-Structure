@@ -56,3 +56,7 @@ void main () {
    printf ("You have %d processors.\n", get_nprocs ());
 }
 ###
+
+
+#sum of numbers separated with \n in file 'work_0out'
+awk '{s+=$1} END {print s}' work_0out

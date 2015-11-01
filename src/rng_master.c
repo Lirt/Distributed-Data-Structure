@@ -1,6 +1,6 @@
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
-   #include "ds_debug.h"
+   #include "../include/ds_debug.h"
 #endif
 
 #include <math.h>
