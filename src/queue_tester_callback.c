@@ -10,7 +10,12 @@
 
 #ifndef DS_STACK_H
    #define DS_STACK_H
-	#include "../include/ds_stack.h"
+	#include "../include/distributed_stack.h"
+#endif
+
+#ifndef DS_QUEUE_H
+   #define DS_QUEUE_H
+	#include "../include/distributed_queue.h"
 #endif
 
 #ifndef MPI_H
