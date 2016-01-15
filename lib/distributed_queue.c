@@ -199,7 +199,7 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
   
    printf("Number of cpus by get_nprocs is : %d\n", queue_count);
    
-   queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
+   queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );   //TODO sizeof(struct *ds_lockfree_queue)?
    for (i = 0; i < queue_count; i++) {
       queues[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
    }

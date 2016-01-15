@@ -1,4 +1,0 @@
-[DEBUG]: Wed Oct 28 00:39:38 2015 rng_master.c:49: Thread '0': Just a test DEBUG message.
-[CRITICAL]: (Wed Oct 28 00:39:38 2015 rng_master.c:50: Errno: No such file or directory): Critical Error! 
-[ERROR]: (Wed Oct 28 00:39:38 2015 rng_master.c:51: Errno: No such file or directory): 
-[INFO]: (Logging messages works!) 

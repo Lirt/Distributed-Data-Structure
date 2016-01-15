@@ -53,7 +53,7 @@ void *work(void *arg_struct) {
    char filename_out[20] = "work_";
    char tid_str[4];
    char in[3] = "in";
-   char out[3] = "out";
+   char out[4] = "out";
    
    sprintf(tid_str, "%ld", *tid);
    strcat(filename_in, tid_str);
@@ -75,6 +75,10 @@ void *work(void *arg_struct) {
    //long ret_null_count = 0;
    //int rem_count = 0;
    
+   /*
+    *TODO ranges for random numbers should be lowNum and 
+    *highNum and unique for all queues and should be set by parameter or config
+
    int *rn = (int*) malloc (sizeof(int));
    int *retval;
    unsigned long sum = 0;
