@@ -138,7 +138,8 @@ bool lockfree_queue_is_empty(void* tid) {
    
    long *t = tid;
    
-   if ( atomic_load( &(queues[*t % queue_count]->a_qsize) ) == 0 ) {
+   struct ds_lockfree_queue *q = queues[*t % queue_count];
+   if ( atomic_load( &(q->a_qsize) ) == 0 ) {
       return true;
    }
    
@@ -274,14 +275,16 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    pthread_cond_init (&load_balance_cond, NULL);
    pthread_mutex_init(&load_balance_mutex, &mutex_attr);
    
-   rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
+   /*rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
    if (rc) {
       printf("ERROR: return code from pthread_create() is %d\n", rc);
       exit(-1);
    }
-   
-   printf("Load balancing thread initialized\n");
-   
+   else {
+         printf("Load balancing thread initialized\n");
+   }
+   */
+
 }
 
 void lockfree_queue_free(void *tid) {
@@ -313,16 +316,15 @@ void lockfree_queue_free(void *tid) {
 void lockfree_queue_insert_item_by_tid (void* tid, void* val) {
 
    long *t = tid;
-   volatile struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
+   struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok? + volatile?
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    struct lockfree_queue_item *tmp;
    item->val = val;
-
    pthread_mutex_lock(&add_mutexes[*t]);
    
    //set next and swap pointer to tail
-   q->tail->next = item;   
+   q->tail->next = item;
    
    //q-tail setting is critical section
    q->tail = q->tail->next;   //use cmp_and_swp?
@@ -339,7 +341,6 @@ void lockfree_queue_insert_item_by_tid (void* tid, void* val) {
    }
    
    pthread_mutex_unlock(&add_mutexes[*t]);
-   
 }
 
 
@@ -544,11 +545,16 @@ void* lockfree_queue_remove_item_by_tid (void* tid, int timeout) {
     * tid should be tid of inserting thread - 1
     * timeout is in microseconds
     */
-   
+
    void* val = NULL;
    long* t = tid;
+
+   if ( lockfree_queue_is_empty(t) ) {
+      //printf("Queue %ld is empty\n", *t);
+      return val;
+   }
    
-   volatile struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
+   struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
    
    pthread_mutex_lock(&rm_mutexes[*t]);
    
@@ -564,11 +570,9 @@ void* lockfree_queue_remove_item_by_tid (void* tid, int timeout) {
    else {
       //TODO check other queues and relocate data to queues to be same sized
       //Or set special variable which signalize which Q was empty and wanted to get item to 1
-      
    }
    
    pthread_mutex_unlock(&rm_mutexes[*t]);
-   
    return val;
    
 }
@@ -587,8 +591,8 @@ void** lockfree_queue_remove_Nitems_by_tid (void* tid, unsigned long N, int time
    
    pthread_mutex_lock(&rm_mutexes[*t]);
    
-   unsigned long item_count = atomic_load( &q->a_qsize ); 
-   if ( atomic_load( &q->a_qsize ) < N ) {
+   unsigned long item_count = atomic_load( &(q->a_qsize) ); 
+   if ( atomic_load( &(q->a_qsize) ) < N ) {
       printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", *t, item_count, N);
       pthread_mutex_unlock(&rm_mutexes[*t]);
       return NULL;
