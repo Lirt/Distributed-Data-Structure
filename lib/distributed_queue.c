@@ -11,7 +11,7 @@
 
 #ifndef MPI_H
    #define MPI_H
-	#include "mpi.h"
+	#include "/usr/include/openmpi-x86_64/mpi.h"
 #endif
 
 #ifndef PTHREAD_H
@@ -49,6 +49,11 @@
    #include <limits.h>
 #endif
 
+#ifndef MATH_H
+   #define MATH_H
+   #include <math.h>
+#endif
+
 /*****
  * Lock-free queue
  ***
@@ -61,6 +66,7 @@ struct ds_lockfree_queue **queues;
 int queue_count = 0;
 
 pthread_attr_t attr;
+pthread_mutexattr_t mutex_attr;
 pthread_t *callback_threads;
 long **tids;
 
@@ -95,6 +101,7 @@ void lockfree_queue_destroy () {
    //TODO handle errors and return bool true/false
    
    pthread_attr_destroy(&attr);
+   pthread_mutexattr_destroy(&mutex_attr);
    
    for (int i = 0; i < queue_count; i++) {
       pthread_cancel(callback_threads[i]);
@@ -159,11 +166,9 @@ bool lockfree_queue_is_empty_all() {
 
 /*void lockfree_queue_init (void) {
    
-   /*
-    * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
-    */
-   
-/*   int i = 0;
+   //get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
+      
+   int i = 0;
    queue_count = get_nprocs();
   
    printf("Number of cpus by get_nprocs is : %d\n", queue_count);
@@ -217,11 +222,15 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
     * Setup mutexes
     */
 
+   pthread_attr_init(&attr);
+   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+   pthread_mutexattr_init(&mutex_attr);
+
    add_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
    rm_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
    for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_init(&add_mutexes[i]);
-      pthread_mutex_init(&rm_mutexes[i]);
+      pthread_mutex_init(&add_mutexes[i], &mutex_attr);
+      pthread_mutex_init(&rm_mutexes[i], &mutex_attr);
    }
    
    
@@ -236,9 +245,6 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    //TODO NOT SURE - argument structure doesnt have to be unique for all thread callbacks(use one structure for all callbacks). tids are different, so maybe should be unique
    struct q_args **q_args_t;
    q_args_t = (struct q_args**) malloc (queue_count * sizeof(struct q_args));
-   
-   pthread_attr_init(&attr);
-   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
    
    int rc;
    
@@ -266,9 +272,9 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    
    //pthread_condattr_init (attr)
    pthread_cond_init (&load_balance_cond, NULL);
-   pthread_mutex_init(&load_balance_mutex);
+   pthread_mutex_init(&load_balance_mutex, &mutex_attr);
    
-   rc = pthread_create(&qsize_watcher_t, NULL, lockfree_queue_qsize_watcher, NULL);
+   rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
    if (rc) {
       printf("ERROR: return code from pthread_create() is %d\n", rc);
       exit(-1);
@@ -337,7 +343,7 @@ void lockfree_queue_insert_item_by_tid (void* tid, void* val) {
 }
 
 
-void lockfree_queue_insert_Nitems_by_tid (void* tid, void* values, int item_count) {
+void lockfree_queue_insert_Nitems_by_tid (void* tid, void** values, int item_count) {
 
    long *t = tid;
    volatile struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
@@ -345,9 +351,10 @@ void lockfree_queue_insert_Nitems_by_tid (void* tid, void* values, int item_coun
    struct lockfree_queue_item *item;
    struct lockfree_queue_item *item_tmp;
    struct lockfree_queue_item *item_first_new;
+   struct lockfree_queue_item *tmp;
 
    item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-   item->val = values[0];
+   //item->val = *values[0]; //TODO FIX -- TRY COMPILE
    item_first_new = item;
    for (int i = 1; i < item_count; i++) {
       item_tmp = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
@@ -381,12 +388,12 @@ void lockfree_queue_insert_Nitems_by_tid (void* tid, void* values, int item_coun
 }
 
 
-void* lockfree_queue_load_balancer(void) {
+void* lockfree_queue_load_balancer() {
    
    //lock Qs
    for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_lock(&add_mutexes[*tid]);
-      pthread_mutex_lock(&rm_mutexes[*tid]);
+      pthread_mutex_lock(&add_mutexes[*tids[i]]);
+      pthread_mutex_lock(&rm_mutexes[*tids[i]]);
    }
    
    /*
@@ -400,9 +407,10 @@ void* lockfree_queue_load_balancer(void) {
    unsigned int total = lockfree_queue_size_total();
    unsigned int estimated_size = total / queue_count;
    
-   unsigned long *indexes = (unsigned long*) malloc (2 * sizeof(unsigned long));
+   int *indexes = (int*) malloc (2 * sizeof(int));
    unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
-   unsigned long q_diff;
+   //unsigned long q_diff;
+   unsigned long items_to_send;
 
    //swap
    //TODO update condition
@@ -411,49 +419,54 @@ void* lockfree_queue_load_balancer(void) {
       printf("Load balance round %d\n", i);
       for (int j = 0; j < queue_count; j++) {
          q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
-         printf("Queue %d size is %lu\n", );
+         printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
       }
+      
       indexes = find_max_min_element_index(q_sizes, queue_count);
-      q_diff = q_sizes[indexes[0]] - q_sizes[indexes[1]];
-      printf"(Max: Q%d with%lu --- Min: Q%d with%lu --- Diff: %lu\n", indexes[0], q_sizes[indexes[0]], indexes[1], q_sizes[indexes[1]], q_diff);
+      //q_diff = q_sizes[indexes[0]] - q_sizes[indexes[1]];
 
-      for (int j = 0; j < q_diff; j++ ) {
-         //remove N items from queue queues[indexes[0]]
-         //add N items to queue queues[indexes[1]]]
+      if ( (q_sizes[indexes[0]] - (abs(q_sizes[indexes[1]] - estimated_size))) >= estimated_size )
+         items_to_send = abs(q_sizes[indexes[1]] - estimated_size);
+      else
+         items_to_send = q_sizes[indexes[0]] - estimated_size;
 
-         //TODO Cannot be remove int. must be generic swap
-         int *retval = lockfree_queue_remove_item_by_tid(indexes[0], 0);
-         lockfree_queue_insert_item_by_tid(indexes[1], retval);
+      printf("Max: Q%d with%lu --- Min: Q%d with%lu --- Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], indexes[1], q_sizes[indexes[1]], items_to_send);
+
+      for (int j = 0; j < items_to_send; j++ ) {
+            //remove N items from queue queues[indexes[0]]
+            //add N items to queue queues[indexes[1]]]
+
+            //TODO Cannot be remove int. must be generic swap
+            int *retval = lockfree_queue_remove_item_by_tid(tids[indexes[0]], 0);
+            lockfree_queue_insert_item_by_tid(tids[indexes[1]], retval);
          
-         //lockfree_queue_insert_Nitems_by_tid();
+            //lockfree_queue_insert_Nitems_by_tid();
       }
    }
    
    //unlock Qs
    for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_unlock(&add_mutexes[*tid]);
-      pthread_mutex_unlock(&rm_mutexes[*tid]);
+      pthread_mutex_unlock(&add_mutexes[*tids[i]]);
+      pthread_mutex_unlock(&rm_mutexes[*tids[i]]);
    }
    
-   pthread_cond_signal (&load_balance_cond);
-   return;
+   pthread_cond_signal(&load_balance_cond);
+   return NULL;
 }
 
 
-void* lockfree_queue_qsize_watcher(void) {
+void* lockfree_queue_qsize_watcher() {
    
    //TODO complete function, test
    
-   unsigned long estimated_size;
    unsigned long threshold = 100;
    unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
    unsigned long total;
    unsigned long *qsize_history = NULL;
-   unsigned long q_diff;
    
    bool balance_flag;
-   unsigned long *indexes = (unsigned long*) malloc (2 * sizeof(unsigned long));
-   long index = 0;
+
+   printf("Watching queues\n");
    
    while(1) {
 
@@ -503,8 +516,9 @@ void* lockfree_queue_qsize_watcher(void) {
          continue;
       }
    
+      printf("Queues turned below threshold - starting load balancer thread.\n");
       pthread_mutex_lock(&load_balance_mutex);
-      rc = pthread_create(&load_balancing_t, NULL, lockfree_queue_load_balancer, NULL);
+      int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, NULL);
       if (rc) {
          printf("ERROR: return code from pthread_create() is %d\n", rc);
          exit(-1);
@@ -536,7 +550,7 @@ void* lockfree_queue_remove_item_by_tid (void* tid, int timeout) {
    
    volatile struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
    
-   pthread_mutex_lock(&rm_mutexes[*tid]);
+   pthread_mutex_lock(&rm_mutexes[*t]);
    
    //TODO timeout spin
    //if (timeout > 0)
@@ -553,7 +567,7 @@ void* lockfree_queue_remove_item_by_tid (void* tid, int timeout) {
       
    }
    
-   pthread_mutex_unlock(&rm_mutexes[*tid]);
+   pthread_mutex_unlock(&rm_mutexes[*t]);
    
    return val;
    
@@ -571,12 +585,12 @@ void** lockfree_queue_remove_Nitems_by_tid (void* tid, unsigned long N, int time
    
    volatile struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
    
-   pthread_mutex_lock(&rm_mutexes[*tid]);
+   pthread_mutex_lock(&rm_mutexes[*t]);
    
-   unsigned long item_count = atomic_load( q->a_qsize ); 
-   if ( atomic_load( q->a_qsize ) < N ) {
+   unsigned long item_count = atomic_load( &q->a_qsize ); 
+   if ( atomic_load( &q->a_qsize ) < N ) {
       printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", *t, item_count, N);
-      pthread_mutex_unlock(&rm_mutexes[*tid]);
+      pthread_mutex_unlock(&rm_mutexes[*t]);
       return NULL;
    }
    
@@ -593,13 +607,13 @@ void** lockfree_queue_remove_Nitems_by_tid (void* tid, unsigned long N, int time
 
    if (i != N-1) {
       printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", *t, i);
-      pthread_mutex_unlock(&rm_mutexes[*tid]);
+      pthread_mutex_unlock(&rm_mutexes[*t]);
       return NULL;
    }
    
    atomic_fetch_sub( &(q->a_qsize), N);
    
-   pthread_mutex_unlock(&rm_mutexes[*tid]);
+   pthread_mutex_unlock(&rm_mutexes[*t]);
    
    return val_arr;
    
@@ -631,7 +645,7 @@ bool lockfree_queue_same_size() {
 
    //TODO test [tids[i]]
    unsigned long size;
-   unsigned long size_history;
+   //unsigned long size_history;
    unsigned long size_ref = atomic_load( &(queues[*tids[0]]->a_qsize) );
    
    for (int i = 0; i < queue_count; i++) {
@@ -646,7 +660,7 @@ bool lockfree_queue_same_size() {
 }
 
 
-unsigned long* find_max_min_element_index(unsigned long *array, unsigned long len) {
+int* find_max_min_element_index(unsigned long *array, unsigned long len) {
    
    /*
     * TODO can find max min, save to array ordered from max to min with values and then after relocation
@@ -665,11 +679,14 @@ unsigned long* find_max_min_element_index(unsigned long *array, unsigned long le
    arr_max_min[0] = 0;
    arr_max_min[1] = ULONG_MAX;
    
-   unsigned long *index_max_min = (unsigned long*) malloc ( 2 * sizeof(unsigned long));
+   int *index_max_min = (int*) malloc ( 2 * sizeof(int));
    index_max_min[0] = 0;
    index_max_min[1] = 0;
+
+   unsigned long max = 0;
+   unsigned long min = 0;
    
-   for (unsigned long i = 0; i < len; i++) {
+   for (int i = 0; i < len; i++) {
       if ( array[i] > max ) {
          max = array[i];
          index_max_min[0] = i;

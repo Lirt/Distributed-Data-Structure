@@ -20,7 +20,7 @@
 
 #ifndef MPI_H
    #define MPI_H
-	#include "mpi.h"
+	#include "/usr/include/openmpi-x86_64/mpi.h"
 #endif
 
 #ifndef STDLIB_H
@@ -67,8 +67,6 @@ void *work(void *arg_struct) {
    printf("filename_out='%s'\n", filename_out);
    FILE *work_file_out = fopen(filename_out, "ab+");
    
-   int i = 0;
-   int j = 0;
    int timeout = 0;
    
    /*
@@ -86,13 +84,13 @@ void *work(void *arg_struct) {
    lockfree_queue_insert_item_by_tid (tid, rn);
    if ( fprintf(work_file_in, "%d\n", *rn) < 0 ) 
       printf("ERROR: fprintf failed\n");
-   printf("Queue %d started with number %d\n", *tid, *rn);
+   printf("Queue %ld started with number %d\n", *tid, *rn);
    
    
    int programDuration = 10;
    int endTime;
    int startTime = (int) time(NULL);
-   printf("Start time for thread %d is %d\n", *tid, startTime);
+   printf("Start time for thread %ld is %d\n", *tid, startTime);
    
    while(1) {
       retval = lockfree_queue_remove_item_by_tid (tid, timeout);
@@ -100,7 +98,8 @@ void *work(void *arg_struct) {
          printf("ERROR: fprintf failed\n");
       
       if (retval != NULL) {
-         for(i = 0; i < *retval; i++) {
+         n_removed++;
+         for(int i = 0; i < *retval; i++) {
             *rn = generateRandomNumber(1,3);
             lockfree_queue_insert_item_by_tid (tid, rn);
             n_inserted++;
@@ -109,16 +108,15 @@ void *work(void *arg_struct) {
       
       //end after N seconds
       endTime = (int) time(NULL) - startTime;
-      if (endTime >= 10)
+      if (endTime >= programDuration) {
          printf("Time is up, endTime = %d\n", endTime);
          printf("Inserted %lu items\n", n_inserted);
          break;
-
       }
    }
 
-   printf("Summing queue %d\n", *tid);
-   fprintf(work_file_out, "Summing queue %d\n", *tid);
+   printf("Summing queue %ld\n", *tid);
+   fprintf(work_file_out, "Summing queue %ld\n", *tid);
    
    /*
    while(1) {
@@ -145,6 +143,8 @@ void *work(void *arg_struct) {
       }
    }
    */
+
+   //TODO change test program to empty more often then get more items and again empty more 
 
    //remove != NULL can be bad condition
    while( (retval = lockfree_queue_remove_item_by_tid(tid, timeout)) != NULL ) {
