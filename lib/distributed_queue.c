@@ -389,8 +389,45 @@ void* lockfree_queue_load_balancer(void) {
       pthread_mutex_lock(&rm_mutexes[*tid]);
    }
    
-   //relocate data
-      
+   /*
+    * relocate data
+    * count estimated size
+    * count who should give whom what amount of items
+    * TODO strategy pattern
+    */
+   
+   //avg_count
+   unsigned int total = lockfree_queue_size_total();
+   unsigned int estimated_size = total / queue_count;
+   
+   unsigned long *indexes = (unsigned long*) malloc (2 * sizeof(unsigned long));
+   unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
+   unsigned long q_diff;
+
+   //swap
+   //TODO update condition
+   //while (!lockfree_queue_same_size) {
+   for (int i = 0 ; i < queue_count; i++) {
+      printf("Load balance round %d\n", i);
+      for (int j = 0; j < queue_count; j++) {
+         q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
+         printf("Queue %d size is %lu\n", );
+      }
+      indexes = find_max_min_element_index(q_sizes, queue_count);
+      q_diff = q_sizes[indexes[0]] - q_sizes[indexes[1]];
+      printf"(Max: Q%d with%lu --- Min: Q%d with%lu --- Diff: %lu\n", indexes[0], q_sizes[indexes[0]], indexes[1], q_sizes[indexes[1]], q_diff);
+
+      for (int j = 0; j < q_diff; j++ ) {
+         //remove N items from queue queues[indexes[0]]
+         //add N items to queue queues[indexes[1]]]
+
+         //TODO Cannot be remove int. must be generic swap
+         int *retval = lockfree_queue_remove_item_by_tid(indexes[0], 0);
+         lockfree_queue_insert_item_by_tid(indexes[1], retval);
+         
+         //lockfree_queue_insert_Nitems_by_tid();
+      }
+   }
    
    //unlock Qs
    for (int i = 0; i < queue_count; i++) {
@@ -398,10 +435,8 @@ void* lockfree_queue_load_balancer(void) {
       pthread_mutex_unlock(&rm_mutexes[*tid]);
    }
    
-   
    pthread_cond_signal (&load_balance_cond);
    return;
-   
 }
 
 
@@ -410,10 +445,14 @@ void* lockfree_queue_qsize_watcher(void) {
    //TODO complete function, test
    
    unsigned long estimated_size;
-   long q_diff;
-   unsigned long *q_sizes = (long*) malloc (queue_count * sizeof(long));
-   bool balance_flag;
+   unsigned long threshold = 100;
+   unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
+   unsigned long total;
+   unsigned long *qsize_history = NULL;
+   unsigned long q_diff;
    
+   bool balance_flag;
+   unsigned long *indexes = (unsigned long*) malloc (2 * sizeof(unsigned long));
    long index = 0;
    
    while(1) {
@@ -425,8 +464,8 @@ void* lockfree_queue_qsize_watcher(void) {
       //sleep for a while so it doesnt check all time
       sleep(1);
 
-      //total = lockfree_queue_size_total();
       //get qsizes
+      //total = lockfree_queue_size_total();
       for (int i = 0; i < queue_count; i++) {
          q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
          total += q_sizes[i];
@@ -454,6 +493,7 @@ void* lockfree_queue_qsize_watcher(void) {
                break;
             }
             else {
+               //
                ;
             }
          }
@@ -462,42 +502,13 @@ void* lockfree_queue_qsize_watcher(void) {
       if (!balance_flag) {
          continue;
       }
-      
-      /*
-       * count estimated size
-       * count who should give whom what amount of items
-       * TODO strategy pattern
-       * 
-       */
-      
-      estimated_size = total / queue_count;
-      unsigned long *indexes;
-      
-      while (!lockfree_queue_same_size) {
-         indexes = find_max_min_element_index(q_sizes, queue_count);
-         q_diff = q_sizes[indexes[0]] - q_sizes[indexes[1]];
-         //lockfree_queue_remove_item_by_tid() //remove N items from queue queues[indexes[0]]
-         //lockfree_queue_insert_Nitems_by_tid() //add N items to queue queues[indexes[1]]]
-      }
-
-      
-      for (int i = 0; i < queue_count; i++) {
-         
-         q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
-         q_diff = q_sizes[i] - estimated_size; 
-         
-      }
-      if ( queues[ ) {
-      }
-      
-      
+   
+      pthread_mutex_lock(&load_balance_mutex);
       rc = pthread_create(&load_balancing_t, NULL, lockfree_queue_load_balancer, NULL);
       if (rc) {
          printf("ERROR: return code from pthread_create() is %d\n", rc);
          exit(-1);
       }
-   
-      pthread_mutex_lock(&load_balance_mutex);
       pthread_cond_wait (&load_balance_cond, &load_balance_mutex);
       
    }
@@ -605,7 +616,7 @@ unsigned long lockfree_queue_size_by_tid (void *tid) {
 
 
 unsigned long lockfree_queue_size_total () {
-   //TODO implementation
+   //TODO test
    
    unsigned long size = 0;
    for (int i = 0; i < queue_count; i++) {
@@ -621,8 +632,7 @@ bool lockfree_queue_same_size() {
    //TODO test [tids[i]]
    unsigned long size;
    unsigned long size_history;
-   
-   size_ref[0] = atomic_load( &(queues[*tids[0]]->a_qsize) );
+   unsigned long size_ref = atomic_load( &(queues[*tids[0]]->a_qsize) );
    
    for (int i = 0; i < queue_count; i++) {
       size = atomic_load( &(queues[*tids[i]]->a_qsize) );
@@ -642,6 +652,13 @@ unsigned long* find_max_min_element_index(unsigned long *array, unsigned long le
     * TODO can find max min, save to array ordered from max to min with values and then after relocation
     * only update values which were relocated and update positions if they changed
     */
+
+    /*
+     * index_max_min[0] is index of element with max number
+     * index_max_min[1] is index of element with min number
+     */
+
+     //apply strategy pattern to sorting
    
    
    unsigned long *arr_max_min = (unsigned long*) malloc ( 2 * sizeof(unsigned long));
