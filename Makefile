@@ -26,4 +26,4 @@ all: obj/distributed_queue.o obj/queue_tester_callback.o
 	$(CC) -std=c11 -Wall -lpthread -DDEBUG obj/distributed_queue.o obj/queue_tester_callback.o -o bin/queue_tester_callback	
 
 clean:
-	-rm -fv *.o obj/*.o rm bin/*
+	-rm -fv *.o obj/*.o bin/* log/*

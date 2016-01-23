@@ -1,0 +1,8 @@
+Obrázok na CPU jedna štruktúra. 
+
+Api urobiť globálny size a isempty s mutexami. Nechať funkcie s nižšou konzistenciu 
+
+Rôzne vyvažovanie zaťaže a skupinovanie štruktúr. 
+
+Vyvažovanie volať aj keď je prazdny
+

@@ -1,7 +1,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <time.h>
-#include <unistd.h>
+#include <string.h>
 
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
@@ -33,7 +33,12 @@
 	#include <pthread.h>
 #endif
 
-#include<string.h>
+#ifndef UNISTD_H
+   #define UNISTD_H
+   #include <unistd.h>
+#endif
+
+
 
 int generateRandomNumber(int rangeMin, int rangeMax) {
 	
@@ -49,26 +54,29 @@ void *work(void *arg_struct) {
    printf("hello from work - T%ld\n", *tid);
    
    
-   char filename_in[20] = "work_";
-   char filename_out[20] = "work_";
+   char filename_ins[20] = "log/work_";
+   char filename_rm[20] = "log/work_";
    char tid_str[4];
-   char in[3] = "in";
-   char out[4] = "out";
+   char ins[3] = "ins";
+   char rm[4] = "rm";
    
    sprintf(tid_str, "%ld", *tid);
-   strcat(filename_in, tid_str);
-   strcat(filename_out, tid_str);
+   strcat(filename_ins, tid_str);
+   strcat(filename_rm, tid_str);
    
-   strcat(filename_in, in);
+   strcat(filename_ins, ins);
    //printf("filename_in='%s'\n", filename_in);
-   FILE *work_file_in = fopen(filename_in, "ab+");
+   FILE *work_file_ins = fopen(filename_ins, "wb");
    
-   strcat(filename_out, out);
+   strcat(filename_rm, rm);
    //printf("filename_out='%s'\n", filename_out);
-   FILE *work_file_out = fopen(filename_out, "ab+");
+   FILE *work_file_rm = fopen(filename_rm, "wb");
    
    int timeout = 0;
-   
+
+   fprintf(work_file_ins, "hello from work thread - T%ld\n", *tid);
+   fprintf(work_file_rm, "hello from work thread - T%ld\n", *tid);
+
    /*
     *TODO ranges for random numbers should be lowNum and 
     *highNum and unique for all queues and should be set by parameter or config
@@ -87,11 +95,11 @@ void *work(void *arg_struct) {
    rn = (int*) malloc (sizeof(int));
    *rn = generateRandomNumber(0,3);
    lockfree_queue_insert_item_by_tid (tid, rn);
-   if ( fprintf(work_file_in, "%d\n", *rn) < 0 ) 
+   if ( fprintf(work_file_ins, "%d\n", *rn) < 0 ) 
       printf("ERROR: fprintf failed\n");
    printf("Queue %ld started with number %d\n", *tid, *rn);
    
-   int programDuration = 10;
+   int programDuration = 1;
    int endTime;
    int startTime = (int) time(NULL);
    printf("Start time for thread %ld is %d\n", *tid, startTime);
@@ -100,27 +108,35 @@ void *work(void *arg_struct) {
       retval = (int*) malloc (sizeof(int));
       retval = lockfree_queue_remove_item_by_tid (tid, timeout);
       
-      if (retval == NULL)
-         continue;
+      if (retval == NULL) {
+         endTime = (int) time(NULL) - startTime;
+         if (endTime >= programDuration) {
+            printf("Time is up, endTime = %d\n", endTime);
+            printf("Inserted %lu items\n", n_inserted);
+            break;
+         }
+         else {
+            continue;
+         }
+      }
 
-      /*if ( fprintf(work_file_in, "%d\n", *retval) < 0 ) 
-         printf("ERROR: fprintf failed\n");*/
+      if ( fprintf(work_file_rm, "%d\n", *retval) < 0 ) 
+         printf("ERROR: fprintf failed\n");
       
       if (retval != NULL) {
          n_removed++;
-         //printf("Q%ld ret: '%d'\n", *tid, *retval);
 
          for(int i = 0; i < *retval; i++) {
-            //printf("CHECK: Q%ld ret: '%d'\n", *tid, *retval);
             rn = (int*) malloc (sizeof(int));
             *rn = generateRandomNumber(1,3);
 
             //printf("Q%ld inserting %d\n", *tid, *rn);
             lockfree_queue_insert_item_by_tid (tid, rn);
+            if ( fprintf(work_file_ins, "%d\n", *rn) < 0 ) 
+               printf("ERROR: fprintf failed\n");
             n_inserted++;
          }
       }
-      //printf("Q%ld break\n", *tid);
       //end after N seconds
       endTime = (int) time(NULL) - startTime;
       if (endTime >= programDuration) {
@@ -131,7 +147,7 @@ void *work(void *arg_struct) {
    }
 
    printf("Summing queue %ld\n", *tid);
-   fprintf(work_file_out, "Summing queue %ld\n", *tid);
+   //fprintf(work_file_rm, "Summing queue %ld\n", *tid);
    
    /*
    while(1) {
@@ -150,31 +166,32 @@ void *work(void *arg_struct) {
    }
    */
    
-   /*   
-   while( !lockfree_queue_empty(tid) ) {
-      retval = lockfree_queue_remove_item_by_tid(tid, timeout));
+      
+   while( !lockfree_queue_is_empty(tid) ) {
+      retval = lockfree_queue_remove_item_by_tid(tid, timeout);
       if (retval != NULL) {
+         n_removed++;
          sum += *retval;
       }
    }
-   */
+   
 
    //TODO change test program to empty more often then get more items and again empty more 
 
    //remove != NULL can be bad condition
-   while( (retval = lockfree_queue_remove_item_by_tid(tid, timeout)) != NULL ) {
-      n_removed++;
-      sum += *retval;
+   //while( (retval = lockfree_queue_remove_item_by_tid(tid, timeout)) != NULL ) {
+   //   n_removed++;
+   //   sum += *retval;
       
       /*if ( fprintf(work_file_out, "%d\n", *retval) < 0 ) 
          printf("ERROR: fprintf failed\n");*/
-   }
+   //}
    //TODO 
    printf("Removed %lu numbers from Q%lu\n", n_removed, *tid);
    printf("Sum of Q%lu is %lu\n", *tid, sum);
    
-   fclose(work_file_in);
-   fclose(work_file_out);
+   fclose(work_file_ins);
+   fclose(work_file_rm);
    pthread_exit(NULL);
    
 }

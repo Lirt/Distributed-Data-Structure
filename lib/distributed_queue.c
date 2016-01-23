@@ -77,6 +77,8 @@ pthread_mutex_t load_balance_mutex;
 pthread_cond_t load_balance_cond;
 pthread_t load_balancing_t;
 pthread_t qsize_watcher_t;
+bool load_balancing_t_running_flag;
+bool qsize_watcher_t_running_flag;
 
 unsigned long *qsize_history = NULL;
 long q_threshold = 1000;
@@ -95,27 +97,45 @@ long *load_bal_amount;
  * 
  **/
 
-void lockfree_queue_destroy () {
+void lockfree_queue_destroy (void* tid) {
    
    //TODO test
    //TODO handle errors and return bool true/false
-   
-   pthread_attr_destroy(&attr);
-   pthread_mutexattr_destroy(&mutex_attr);
-   
+   long *t_tmp = tid;
+   long t = *t_tmp;
+   printf("%ld\n", t);
+
    for (int i = 0; i < queue_count; i++) {
-      pthread_cancel(callback_threads[i]);
+      pthread_mutex_lock(&add_mutexes[i]);
+      pthread_mutex_lock(&rm_mutexes[i]);
    }
    
+   if (load_balancing_t_running_flag)
+      pthread_cancel(load_balancing_t);
+   if (qsize_watcher_t_running_flag)
+      pthread_cancel(qsize_watcher_t);
+
+   for (int i = 0; i < queue_count; i++) {
+      if (i != t)
+         pthread_cancel(callback_threads[i]);
+   }
+   for (int i = 0; i < queue_count; i++) {
+      pthread_mutex_unlock(&add_mutexes[i]);
+      pthread_mutex_unlock(&rm_mutexes[i]);      
+   }
+
+   pthread_attr_destroy(&attr);
+   pthread_mutexattr_destroy(&mutex_attr);
+
    for (int i = 0; i < queue_count; i++) {
       lockfree_queue_free(tids[i]);
    }
-   
+
    for (int i = 0; i < queue_count; i++) {
       pthread_mutex_destroy(&add_mutexes[i]);
       pthread_mutex_destroy(&rm_mutexes[i]);
    }
-   
+
    //pthread_condattr_destroy (attr);
    pthread_cond_destroy (&load_balance_cond);
    pthread_mutex_destroy (&load_balance_mutex);
@@ -128,6 +148,9 @@ void lockfree_queue_destroy () {
    free(callback_threads);
    
    free(tids);
+
+   //pthread_cancel(callback_threads[t]);
+   pthread_exit(&callback_threads[t]);
    
 }
 
@@ -164,11 +187,14 @@ bool lockfree_queue_is_empty_all() {
    
 }
 
+void lockfree_queue_init_callback (void* (*callback)(void *args), void* arguments) {
 
-/*void lockfree_queue_init (void) {
+   //TODO documentation must contain struct used for arguments in thread callback
    
-   //get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
-      
+   /*
+    * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
+    */
+   
    int i = 0;
    queue_count = get_nprocs();
   
@@ -181,37 +207,8 @@ bool lockfree_queue_is_empty_all() {
    
    for (i = 0; i < queue_count; i++) {
       queues[i]->head = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-      queues[i]->tail = queues[i]->head;
-      queues[i]->divider = queues[i]->head;
-      //queues[i]->size = 0;
-      atomic_init( &(queues[i]->a_qsize), 0 );
-   }
-   
-   printf("Queues initialized\n");
-   
-}*/
-
-
-void lockfree_queue_init_callback (void* (*callback)(void *args), void* arguments) {
-   
-   //TODO documentation must contain struct used for arguments in thread callback
-   
-   /*
-    * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
-    */
-   
-   int i = 0;
-   queue_count = get_nprocs();
-  
-   printf("Number of cpus by get_nprocs is : %d\n", queue_count);
-   
-   queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );   //TODO sizeof(struct *ds_lockfree_queue)?
-   for (i = 0; i < queue_count; i++) {
-      queues[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
-   }
-   
-   for (i = 0; i < queue_count; i++) {
-      queues[i]->head = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+      //queues[i]->head->val = NULL; //TODO ?
+      queues[i]->head->next = NULL; //TODO ?
       queues[i]->tail = queues[i]->head;
       queues[i]->divider = queues[i]->head;
       atomic_init( &(queues[i]->a_qsize), 0 );
@@ -222,6 +219,11 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    /*
     * Setup mutexes
     */
+
+   int *oldstate = NULL;
+   int *oldtype = NULL;
+   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, oldstate);
+   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, oldtype);
 
    pthread_attr_init(&attr);
    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
@@ -239,18 +241,15 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
     * Initialize threads to callback function
     */
    
-   pthread_t *callback_threads = (pthread_t*) malloc (queue_count * sizeof(pthread_t));
-   //long **tids;
+   callback_threads = (pthread_t*) malloc (queue_count * sizeof(pthread_t));
    tids = (long**) malloc (queue_count * sizeof(long));
    
-   //TODO NOT SURE - argument structure doesnt have to be unique for all thread callbacks(use one structure for all callbacks). tids are different, so maybe should be unique
    struct q_args **q_args_t;
    q_args_t = (struct q_args**) malloc (queue_count * sizeof(struct q_args));
-   
    int rc;
    
-   for (i = 0; i < queue_count; i++) {
-      
+   for (int i = 0; i < queue_count; i++) {
+
       tids[i] = (long*) malloc ( sizeof(long));
       *tids[i] = i;
       q_args_t[i] = (struct q_args*) malloc (sizeof(struct q_args));
@@ -274,14 +273,18 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    //pthread_condattr_init (attr)
    pthread_cond_init (&load_balance_cond, NULL);
    pthread_mutex_init(&load_balance_mutex, &mutex_attr);
+   load_balancing_t_running_flag = false;
+   qsize_watcher_t_running_flag = false;
    
-   /*rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
+   /*
+   rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
    if (rc) {
       printf("ERROR: return code from pthread_create() is %d\n", rc);
       exit(-1);
    }
    else {
-         printf("Load balancing thread initialized\n");
+         printf("QSize watcher thread initialized\n");
+         qsize_watcher_t_running_flag = true;
    }
    */
 
@@ -305,9 +308,13 @@ void lockfree_queue_free(void *tid) {
       free(item_tmp);
    }
    
-   free(q->head);
-   free(q->divider);
-   free(q->tail);
+   //free(item->val);   //item == NULL
+   //free(item->next);
+   //free(item);
+
+   //free(q->head);  //dont need to free, because it was freed during while
+   //free(q->divider);  //same
+   //free(q->tail);  //same
    free(q);
    
 }
@@ -321,6 +328,7 @@ void lockfree_queue_insert_item_by_tid (void* tid, void* val) {
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    struct lockfree_queue_item *tmp;
    item->val = val;
+   item->next = NULL;   //TODO ?
    pthread_mutex_lock(&add_mutexes[*t]);
    
    //set next and swap pointer to tail
@@ -452,6 +460,7 @@ void* lockfree_queue_load_balancer() {
    }
    
    pthread_cond_signal(&load_balance_cond);
+   load_balancing_t_running_flag = false;
    return NULL;
 }
 
@@ -524,9 +533,13 @@ void* lockfree_queue_qsize_watcher() {
          printf("ERROR: return code from pthread_create() is %d\n", rc);
          exit(-1);
       }
+      else {
+         load_balancing_t_running_flag = true;
+      }
       pthread_cond_wait (&load_balance_cond, &load_balance_mutex);
       
    }
+   qsize_watcher_t_running_flag = false;
    
 }
 

@@ -65,7 +65,7 @@ extern pthread_mutexattr_t mutex_attr;
 extern long **tids;
 
 extern void lockfree_queue_free(void *tid);
-extern void lockfree_queue_destroy (void);
+extern void lockfree_queue_destroy (void* tid);
 extern bool lockfree_queue_is_empty(void *tid);
 extern bool lockfree_queue_is_empty_all(void);
 /*extern void lockfree_queue_init (void);*/
