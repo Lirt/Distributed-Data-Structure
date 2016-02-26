@@ -47,10 +47,14 @@
 struct q_args {
    void* args;
    long* tid;
+   int q_count;
+   int t_count;
 };
 //or use pthread_self() to get id
 
-   
+#define ONE_TO_ONE 1
+#define TWO_TO_ONE 2
+
 //typedef struct ds_queue_local queue;
 extern struct ds_lockfree_queue **queues;
 extern int queue_count; //number of created queues
@@ -65,17 +69,24 @@ extern pthread_mutexattr_t mutex_attr;
 extern long **tids;
 
 extern void lockfree_queue_free(void *tid);
-extern void lockfree_queue_destroy (void* tid);
+extern void lockfree_queue_destroy (void);
 extern bool lockfree_queue_is_empty(void *tid);
 extern bool lockfree_queue_is_empty_all(void);
+extern bool lockfree_queue_is_empty_all_consistent(void);
 /*extern void lockfree_queue_init (void);*/
-extern void lockfree_queue_init_callback (void *(*callback)(void *args), void *arguments);
+extern void lockfree_queue_init_callback (void *(*callback)(void *args), void *arguments, int queue_count, int thread_count);
+extern void lockfree_queue_insert_item (void *val);
 extern void lockfree_queue_insert_item_by_tid (void *tid, void *val);
 extern void* lockfree_queue_qsize_watcher();
 extern void* lockfree_queue_load_balancer();
+extern void* lockfree_queue_remove_item (int timeout);
 extern void* lockfree_queue_remove_item_by_tid (void *tid, int timeout);
 extern void* lockfree_queue_remove_all_items ();
 extern unsigned long lockfree_queue_size_by_tid (void *tid);
 extern unsigned long lockfree_queue_size_total (void);
+extern unsigned long lockfree_queue_size_total_consistent (void);
+extern unsigned long* lockfree_queue_size_total_consistent_allarr (void);
 
+extern int inline getInsertionTid();
+extern int inline getRemovalTid();
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);

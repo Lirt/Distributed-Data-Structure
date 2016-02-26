@@ -54,6 +54,19 @@
    #include <math.h>
 #endif
 
+/*#ifndef UTHASH_H
+   #define UTHASH_H
+   #include "../uthash/src/uthash.h"
+#endif*/
+
+#include "../include/uthash.h"
+
+typedef struct tid_hash_struct {
+    unsigned long id;                    /* key */
+    int tid;
+    UT_hash_handle hh;         /* makes this structure hashable */
+} tid_hash_struct;
+
 /*****
  * Lock-free queue
  ***
@@ -62,8 +75,14 @@
  * GLOBAL VARIABLES
  */
 
+//tid_hash_struct *tid_hashes = NULL;
+tid_hash_struct *tid_insertion_hashes = NULL;
+tid_hash_struct *tid_removal_hashes = NULL;
+
 struct ds_lockfree_queue **queues;
 int queue_count = 0;
+int thread_count = 0;
+int thread_to_queue_ratio = 0;
 
 pthread_attr_t attr;
 pthread_mutexattr_t mutex_attr;
@@ -72,6 +91,8 @@ long **tids;
 
 pthread_mutex_t *add_mutexes;
 pthread_mutex_t *rm_mutexes;
+pthread_mutex_t insertionTidMutex;
+pthread_mutex_t removalTidMutex;
 
 pthread_mutex_t load_balance_mutex;
 pthread_cond_t load_balance_cond;
@@ -97,13 +118,70 @@ long *load_bal_amount;
  * 
  **/
 
-void lockfree_queue_destroy (void* tid) {
+int inline getInsertionTid() {
+   struct tid_hash_struct *ths;
+   pthread_t pt = pthread_self();
+   //printf("CHECK: TID %ld", pt);
+   HASH_FIND_INT( tid_insertion_hashes, &pt, ths );
+   if (ths == NULL) {
+
+      pthread_mutex_lock(&insertionTidMutex);
+      unsigned int c = HASH_COUNT(tid_insertion_hashes);
+      
+      tid_hash_struct *tid_hash = NULL;
+      tid_hash = (tid_hash_struct*) malloc(sizeof (struct tid_hash_struct));
+
+      tid_hash->id = pt;
+      tid_hash->tid = c;
+      printf("Insertion thread %ld mapped to Q%d\n", pt, c);
+      HASH_ADD_INT( tid_insertion_hashes, id, tid_hash );
+
+      HASH_FIND_INT( tid_insertion_hashes, &pt, ths );
+      pthread_mutex_unlock(&insertionTidMutex);
+
+   }
+   //printf("ICHECK\n");
+   return ths->tid;
+}
+
+int inline getRemovalTid() {
+   struct tid_hash_struct *ths;
+   pthread_t pt = pthread_self();
+   //printf("CHECK: TID %ld", pt);
+   HASH_FIND_INT( tid_removal_hashes, &pt, ths );
+   if (ths == NULL) {
+
+      pthread_mutex_lock(&removalTidMutex);
+      unsigned int c = HASH_COUNT(tid_removal_hashes);
+
+      tid_hash_struct *tid_hash = NULL;
+      tid_hash = (tid_hash_struct*) malloc(sizeof (struct tid_hash_struct));
+
+      tid_hash->id = pt;
+      tid_hash->tid = c;
+      printf("Removal thread %ld mapped to Q%d\n", pt, c);
+      HASH_ADD_INT( tid_removal_hashes, id, tid_hash );
+
+      HASH_FIND_INT( tid_removal_hashes, &pt, ths );
+      pthread_mutex_unlock(&removalTidMutex);
+
+   }
+   //printf("DCHECK\n");
+   return ths->tid;
+}
+
+void lockfree_queue_destroy() {
    
    //TODO test
    //TODO handle errors and return bool true/false
-   long *t_tmp = tid;
-   long t = *t_tmp;
-   printf("%ld\n", t);
+   //TODO decide which thread will destroy it and set tid 
+   //TODO After changes need to be recoded
+   //DONT USE 
+
+   int t_tmp = getInsertionTid();
+   //int t_tmp = getRemovalTid();
+   int t = t_tmp;
+   printf("%d\n", t);
 
    for (int i = 0; i < queue_count; i++) {
       pthread_mutex_lock(&add_mutexes[i]);
@@ -155,13 +233,15 @@ void lockfree_queue_destroy (void* tid) {
 }
 
 
-bool lockfree_queue_is_empty(void* tid) {
+bool lockfree_queue_is_empty(void *tid) {
    
    //TODO test
    
-   long *t = tid;
+   int *t = tid;
    
-   struct ds_lockfree_queue *q = queues[*t % queue_count];
+   //struct ds_lockfree_queue *q = queues[*t % queue_count];
+   struct ds_lockfree_queue *q = queues[ *t ];
+
    if ( atomic_load( &(q->a_qsize) ) == 0 ) {
       return true;
    }
@@ -174,8 +254,6 @@ bool lockfree_queue_is_empty(void* tid) {
 bool lockfree_queue_is_empty_all() {
 
    //TODO test
-   //Needs lock on all or
-   //would be eventually consistent
    
    for (int i = 0 ; i < queue_count; i++) {
       if ( atomic_load( &(queues[i]->a_qsize) ) != 0 ) {
@@ -187,7 +265,34 @@ bool lockfree_queue_is_empty_all() {
    
 }
 
-void lockfree_queue_init_callback (void* (*callback)(void *args), void* arguments) {
+bool lockfree_queue_is_empty_all_consistent() {
+
+   //TODO test
+   
+   bool retval = true; 
+
+   for (int i = 0; i < queue_count; i++) {
+      pthread_mutex_lock(&add_mutexes[i]);
+      pthread_mutex_lock(&rm_mutexes[i]);
+   }
+
+   for (int i = 0 ; i < queue_count; i++) {
+      if ( atomic_load( &(queues[i]->a_qsize) ) != 0 ) {
+         retval = false;
+         break;
+      }
+   }
+
+   for (int i = 0; i < queue_count; i++) {
+      pthread_mutex_unlock(&add_mutexes[i]);
+      pthread_mutex_unlock(&rm_mutexes[i]);
+   }
+   
+   return retval;
+   
+}
+
+void lockfree_queue_init_callback (void* (*callback)(void *args), void* arguments, int queue_count_arg, int thread_count_arg) {
 
    //TODO documentation must contain struct used for arguments in thread callback
    
@@ -196,9 +301,15 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
     */
    
    int i = 0;
-   queue_count = get_nprocs();
+   if (queue_count_arg == 0) 
+      queue_count = get_nprocs();
+   else 
+      queue_count = queue_count_arg;
+   //TODO should change all adds and removes from queue and queue operation which 
+   //use queue_count variable to use modulo 2
   
-   printf("Number of cpus by get_nprocs is : %d\n", queue_count);
+   printf("Number of cpus by get_nprocs is : %d\n", get_nprocs());
+   printf("Creating %d queues\n", queue_count);
    
    queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
    for (i = 0; i < queue_count; i++) {
@@ -235,26 +346,51 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
       pthread_mutex_init(&add_mutexes[i], &mutex_attr);
       pthread_mutex_init(&rm_mutexes[i], &mutex_attr);
    }
+   pthread_mutex_init(&insertionTidMutex, &mutex_attr);
+   pthread_mutex_init(&removalTidMutex, &mutex_attr);
    
    
    /*
     * Initialize threads to callback function
+    */   
+   thread_count = thread_count_arg;
+   if ( (thread_count_arg != ONE_TO_ONE) && (thread_count_arg != TWO_TO_ONE) ) {
+      printf("Thread count argument is invalid\n");
+      exit(-1);
+   }
+   if (thread_count_arg == ONE_TO_ONE)
+      thread_count = queue_count;
+   if (thread_count_arg == TWO_TO_ONE)
+      thread_count = 2 * queue_count;
+   
+   printf("Queue count is %d\n", queue_count);
+   printf("Thread count is %d\n", thread_count);
+   thread_to_queue_ratio = thread_count / queue_count;
+
+   callback_threads = (pthread_t*) malloc (thread_count * sizeof(pthread_t));
+   tids = (long**) malloc (thread_count * sizeof(long));
+
+   /*
+    * Settings for queue argument structure and thread mapping to queues
     */
-   
-   callback_threads = (pthread_t*) malloc (queue_count * sizeof(pthread_t));
-   tids = (long**) malloc (queue_count * sizeof(long));
-   
    struct q_args **q_args_t;
-   q_args_t = (struct q_args**) malloc (queue_count * sizeof(struct q_args));
+   q_args_t = (struct q_args**) malloc (thread_count * sizeof(struct q_args));
    int rc;
    
-   for (int i = 0; i < queue_count; i++) {
+   for (int i = 0; i < thread_count; i++) {
+
+      /*
+      tid_hash_struct *tid_hash = NULL;
+      tid_hash = (tid_hash_struct*) malloc(sizeof (struct tid_hash_struct));
+      */
 
       tids[i] = (long*) malloc ( sizeof(long));
       *tids[i] = i;
       q_args_t[i] = (struct q_args*) malloc (sizeof(struct q_args));
       q_args_t[i]->args = arguments;
       q_args_t[i]->tid = tids[i];
+      q_args_t[i]->q_count = queue_count;
+      q_args_t[i]->t_count = thread_count;
       
       rc = pthread_create(&callback_threads[i], NULL, callback, q_args_t[i]);
       if (rc) {
@@ -262,9 +398,27 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
          exit(-1);
       }
       
+      printf("Created thread with ID %ld\n", callback_threads[i]);
+      /*
+      tid_hash->id = callback_threads[i];
+      if ( thread_count_arg == TWO_TO_ONE )
+         tid_hash->tid = i % 2;
+      else 
+         tid_hash->tid = i;
+
+
+      tid_hash->tid = i % 2;
+      HASH_ADD_INT( tid_hashes, id, tid_hash );
+
+      struct tid_hash_struct *ths;
+      HASH_FIND_INT( tid_hashes, &callback_threads[i], ths ); 
+      unsigned long ttid = ths->tid;
+      printf("TID from hash table is %ld\n", ttid);
+      */
+
    }
    
-   printf("%d Threads to callbacks initialized\n", queue_count);
+   printf("%d Threads to callbacks initialized\n", thread_count);
    
    /*
     * Initialize load balancer
@@ -294,9 +448,12 @@ void lockfree_queue_free(void *tid) {
    
    //TODO Check if queues are init. as well in other functions.
    //Test
-   
+
    long *t = tid;
-   struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
+
+   //struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
+   struct ds_lockfree_queue *q = queues[ *t ]; //modulo ok?
+
    struct lockfree_queue_item *item;
    struct lockfree_queue_item *item_tmp;
    
@@ -319,11 +476,45 @@ void lockfree_queue_free(void *tid) {
    
 }
 
+void lockfree_queue_insert_item (void* val) {
 
-void lockfree_queue_insert_item_by_tid (void* tid, void* val) {
+   //printf("aa: %ld\n", pthread_self());
+   int t = getInsertionTid();
+   //printf("inserting to Q. %d\n", t);
+   //struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok? + volatile?
+   struct ds_lockfree_queue *q = queues[ t ]; //modulo ok? + volatile?
+
+   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+   struct lockfree_queue_item *tmp;
+   item->val = val;
+   item->next = NULL;   //TODO ?
+   pthread_mutex_lock(&add_mutexes[t]);
+   
+   //set next and swap pointer to tail
+   q->tail->next = item;
+   
+   //q-tail setting is critical section
+   q->tail = q->tail->next;   //use cmp_and_swp?
+   
+   //increment Q size
+   atomic_fetch_add( &(q->a_qsize), 1);
+   
+   //cleanup
+   while ( q->head != q->divider ) {
+      tmp = q->head;
+      q->head = q->head->next;
+      free(tmp->val);
+      free(tmp);
+   }
+   
+   pthread_mutex_unlock(&add_mutexes[t]);
+}
+
+void lockfree_queue_insert_item_by_tid (void *tid, void* val) {
 
    long *t = tid;
-   struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok? + volatile?
+   //struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok? + volatile?
+   struct ds_lockfree_queue *q = queues[ *t ]; //modulo ok? + volatile?
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    struct lockfree_queue_item *tmp;
@@ -352,10 +543,11 @@ void lockfree_queue_insert_item_by_tid (void* tid, void* val) {
 }
 
 
-void lockfree_queue_insert_Nitems_by_tid (void* tid, void** values, int item_count) {
+void lockfree_queue_insert_Nitems_by_tid (void** values, int item_count) {
 
-   long *t = tid;
-   volatile struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
+   int t = getInsertionTid();
+   //volatile struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
+   volatile struct ds_lockfree_queue *q = queues[ t ]; //modulo ok?
 
    struct lockfree_queue_item *item;
    struct lockfree_queue_item *item_tmp;
@@ -372,7 +564,7 @@ void lockfree_queue_insert_Nitems_by_tid (void* tid, void** values, int item_cou
       item = item->next;
    }
    
-   pthread_mutex_lock(&add_mutexes[*t]);
+   pthread_mutex_lock(&add_mutexes[t]);
    
    //set next
    q->tail->next = item_first_new;   
@@ -392,7 +584,7 @@ void lockfree_queue_insert_Nitems_by_tid (void* tid, void** values, int item_cou
       free(tmp);
    }
    
-   pthread_mutex_unlock(&add_mutexes[*t]);
+   pthread_mutex_unlock(&add_mutexes[t]);
    
 }
 
@@ -551,6 +743,45 @@ void* lockfree_queue_remove_all_items () {
    
 }
 
+void* lockfree_queue_remove_item (int timeout) {
+
+   /*
+    * tid should be tid of inserting thread - 1
+    * timeout is in microseconds
+    */
+
+   void* val = NULL;
+   int t = getRemovalTid();
+
+   if ( lockfree_queue_is_empty(&t) ) {
+      //printf("Queue %ld is empty\n", *t);
+      return val;
+   }
+   
+   //struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
+   struct ds_lockfree_queue *q = queues[ t ]; //modulo ok?
+   
+
+   pthread_mutex_lock(&rm_mutexes[t]);
+   
+   //TODO timeout spin
+   //if (timeout > 0)
+   //   usleep(timeout);
+   
+   if ( q->divider != q->tail ) {   //atomic reads?
+      val = q->divider->next->val;
+      q->divider = q->divider->next;
+      atomic_fetch_sub( &(q->a_qsize), 1);
+   }
+   else {
+      //TODO check other queues and relocate data to queues to be same sized
+      //Or set special variable which signalize which Q was empty and wanted to get item to 1
+   }
+   
+   pthread_mutex_unlock(&rm_mutexes[t]);
+   return val;
+   
+}
 
 void* lockfree_queue_remove_item_by_tid (void* tid, int timeout) {
 
@@ -567,8 +798,10 @@ void* lockfree_queue_remove_item_by_tid (void* tid, int timeout) {
       return val;
    }
    
-   struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
+   //struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
+   struct ds_lockfree_queue *q = queues[ *t ]; //modulo ok?
    
+
    pthread_mutex_lock(&rm_mutexes[*t]);
    
    //TODO timeout spin
@@ -591,23 +824,24 @@ void* lockfree_queue_remove_item_by_tid (void* tid, int timeout) {
 }
 
 
-void** lockfree_queue_remove_Nitems_by_tid (void* tid, unsigned long N, int timeout) {
+void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
    
    /*
     * N is amount of items to be taken from Q
     */
    
-   long* t = tid;
+   int t = getRemovalTid();
    void **val_arr = malloc(N * sizeof(void*));
    
-   volatile struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
+   //volatile struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
+   volatile struct ds_lockfree_queue *q = queues[ t ]; //modulo ok?
    
-   pthread_mutex_lock(&rm_mutexes[*t]);
+   pthread_mutex_lock(&rm_mutexes[t]);
    
    unsigned long item_count = atomic_load( &(q->a_qsize) ); 
    if ( atomic_load( &(q->a_qsize) ) < N ) {
-      printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", *t, item_count, N);
-      pthread_mutex_unlock(&rm_mutexes[*t]);
+      printf("Not enough items in queue %d. There are %ld but was requested %ld.\n", t, item_count, N);
+      pthread_mutex_unlock(&rm_mutexes[t]);
       return NULL;
    }
    
@@ -623,14 +857,14 @@ void** lockfree_queue_remove_Nitems_by_tid (void* tid, unsigned long N, int time
    }
 
    if (i != N-1) {
-      printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", *t, i);
-      pthread_mutex_unlock(&rm_mutexes[*t]);
+      printf("Function did not return requested numbers from queue %d. number of returned values is %ld.\n", t, i);
+      pthread_mutex_unlock(&rm_mutexes[t]);
       return NULL;
    }
    
    atomic_fetch_sub( &(q->a_qsize), N);
    
-   pthread_mutex_unlock(&rm_mutexes[*t]);
+   pthread_mutex_unlock(&rm_mutexes[t]);
    
    return val_arr;
    
@@ -641,7 +875,8 @@ unsigned long lockfree_queue_size_by_tid (void *tid) {
    //TODO test
    
    long *t = tid;
-   return atomic_load( &(queues[*t % queue_count]->a_qsize) );
+   //return atomic_load( &(queues[*t % queue_count]->a_qsize) );
+   return atomic_load( &(queues[ *t ]->a_qsize) );
    
 }
 
@@ -656,7 +891,55 @@ unsigned long lockfree_queue_size_total () {
 
    return size;
    
-} 
+}
+
+unsigned long lockfree_queue_size_total_consistent () {
+   //TODO test
+
+   unsigned long size = 0;
+   
+   //Lock mutexes for adding and removing threads
+   for (int i = 0; i < queue_count; i++) {
+      pthread_mutex_lock(&add_mutexes[i]);
+      pthread_mutex_lock(&rm_mutexes[i]);
+   }
+
+   for (int i = 0; i < queue_count; i++) {
+      size += atomic_load( &(queues[i]->a_qsize) );
+   }
+
+   for (int i = 0; i < queue_count; i++) {
+      pthread_mutex_unlock(&add_mutexes[i]);
+      pthread_mutex_unlock(&rm_mutexes[i]);
+   }
+
+   return size;
+   
+}
+
+unsigned long* lockfree_queue_size_total_consistent_allarr () {
+   //TODO test
+
+   unsigned long* sizes = (unsigned long*) malloc(queue_count * sizeof(unsigned long));
+   
+   //Lock mutexes for adding and removing threads
+   for (int i = 0; i < queue_count; i++) {
+      pthread_mutex_lock(&add_mutexes[i]);
+      pthread_mutex_lock(&rm_mutexes[i]);
+   }
+
+   for (int i = 0; i < queue_count; i++) {
+      sizes[i] = atomic_load( &(queues[i]->a_qsize) );
+   }
+
+   for (int i = 0; i < queue_count; i++) {
+      pthread_mutex_unlock(&add_mutexes[i]);
+      pthread_mutex_unlock(&rm_mutexes[i]);
+   }
+
+   return sizes;
+   
+}
 
 bool lockfree_queue_same_size() {
 
