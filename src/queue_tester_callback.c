@@ -42,6 +42,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+atomic_ulong finished;
+
 
 int generateRandomNumber(int rangeMin, int rangeMax) {
 	
@@ -115,7 +117,7 @@ void *work(void *arg_struct) {
    int *rn;
    int *retval;
    
-   int programDuration = 5;
+   int programDuration = 7;
    int endTime;
    int startTime = (int) time(NULL);
    printf("Start time for thread %ld is %d\n", *tid, startTime);
@@ -135,8 +137,9 @@ void *work(void *arg_struct) {
          endTime = (int) time(NULL) - startTime;
          if (endTime >= programDuration) {
             printf("Time is up, endTime = %d\n", endTime);
-            printf("Inserted %lu items\n", n_inserted);
-            
+            printf("Thread %ld Inserted %lu items\n", *tid, n_inserted);
+
+            atomic_fetch_add( &finished, 1);
             fclose(work_file_ins);
             fclose(work_file_rm);
             pthread_exit(NULL);
@@ -147,13 +150,14 @@ void *work(void *arg_struct) {
    }
    else {
       //CONSUMER
-      sleep(1);
+      //sleep(1);
 
-      unsigned long* sizes = lockfree_queue_size_total_consistent_allarr();
+      //unsigned long* sizes = lockfree_queue_size_total_consistent_allarr();
       printf("\n");
-      for (int i = 0; i < q_count; i++) {
+      printf("Starting consumer (T%ld) at time %d\n", *tid, (int) time(NULL));
+      /*for (int i = 0; i < q_count; i++) {
          printf("Q%d size is %ld\n", i, sizes[i]);
-      }
+      }*/
 
       while(1) {
          retval = (int*) malloc (sizeof(int));
@@ -168,9 +172,15 @@ void *work(void *arg_struct) {
             }
             */
             unsigned long size = lockfree_queue_size_total_consistent();
-            //printf("Total Q size is %ld\n", size);
             if (size == 0) {
-               break;
+               printf("Total Q%ld size is %ld\n", *tid, size);
+               unsigned long fin = atomic_load( &finished );
+               if ( finished != 2 )
+                  continue;
+               else {
+                  printf("All insertion threads finished\n");
+                  break;
+               }
             }
          }
          else {
@@ -196,6 +206,7 @@ void *work(void *arg_struct) {
 int main(int argc, char** argv) {
    
    setbuf(stdout, NULL);
+   atomic_init( &finished, 0 );
    lockfree_queue_init_callback(work, NULL, 2, TWO_TO_ONE);
    //void *status;
    
