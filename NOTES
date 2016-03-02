@@ -60,3 +60,27 @@ void main () {
 
 #sum of numbers separated with \n in file 'work_0out'
 awk '{s+=$1} END {print s}' work_0out
+
+
+#DEBUG
+ulimit -c unlimited
+ulimit -a
+less /proc/sys/kernel/core_pattern
+find / -name "*core.*"
+echo /tmp/core > /proc/sys/kernel/core_pattern
+kernel.core_pattern = /tmp/core
+sysctl -p
+gdb /path/to/binary/file /tmp/core.1234
+>thread apply all bt full
+>explore queues[0].head
+>print *(struct lockfree_queue_item *) 0x7ffff014bb10
+
+break distributed_queue.c:741
+print (long) *tids[0]
+next
+p/d (int*) val
+x (int*) 0x7fffec07f8f0
+
+140737153333488
+
+grep -E  "^[0-9]{2,}" work_3rm work_1rm | wc -l

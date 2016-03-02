@@ -3,10 +3,12 @@
 #include <time.h>
 #include <string.h>
 
+/*
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
    #include "../include/ds_debug.h"
 #endif
+*/
 
 #ifndef DS_STACK_H
    #define DS_STACK_H
@@ -38,16 +40,19 @@
    #include <unistd.h>
 #endif
 
-
 #include <sys/types.h>
 #include <sys/stat.h>
 
 atomic_ulong finished;
 
 
-int generateRandomNumber(int rangeMin, int rangeMax) {
+int *generateRandomNumber(int rangeMin, int rangeMax) {
 	
-	int r = rand() % rangeMax + rangeMin;
+   int *r;
+   r = (int*) malloc (sizeof(int));
+   if (r == NULL)
+      printf("ERROR: Malloc failed\n");
+	*r = rand() % rangeMax + rangeMin;
 	return r;
 
 }
@@ -102,13 +107,6 @@ void *work(void *arg_struct) {
       printf("ERROR: cannot write to file %s\n", filename_ins);
    if ( fprintf(work_file_rm, "hello from removing work thread - T%ld, my range is %ld-%ld\n", *tid, lowRange, highRange) < 0 )
       printf("ERROR: cannot write to file %s\n", filename_ins);
-   fflush(work_file_ins);
-   fflush(work_file_rm);
-   
-
-   /*fclose(work_file_ins);
-   fclose(work_file_rm);
-   pthread_exit(NULL);*/
 
    unsigned long sum = 0;
    unsigned long n_inserted = 0;
@@ -125,8 +123,7 @@ void *work(void *arg_struct) {
    if ( *tid % 2 == 0 ) {
       //PRODUCER
       while(1) {
-         rn = (int*) malloc (sizeof(int));
-         *rn = generateRandomNumber(lowRange, highRange);
+         rn = generateRandomNumber(lowRange, highRange);
 
          lockfree_queue_insert_item (rn);
          if ( fprintf(work_file_ins, "%d\n", *rn) < 0 )
@@ -160,8 +157,8 @@ void *work(void *arg_struct) {
       }*/
 
       while(1) {
-         retval = (int*) malloc (sizeof(int));
-         retval = lockfree_queue_remove_item (timeout);
+         //retval = (int*) malloc (sizeof(int));
+         retval = lockfree_queue_remove_item(timeout);
 
          if (retval == NULL) {
             //unsigned long* sizes = lockfree_queue_size_total_consistent_allarr();
@@ -173,12 +170,12 @@ void *work(void *arg_struct) {
             */
             unsigned long size = lockfree_queue_size_total_consistent();
             if (size == 0) {
-               printf("Total Q%ld size is %ld\n", *tid, size);
+               //printf("Total Q%ld size is %ld\n", *tid, size);
                unsigned long fin = atomic_load( &finished );
-               if ( finished != 2 )
+               if ( fin != 2 )
                   continue;
                else {
-                  printf("All insertion threads finished\n");
+                  printf("All insertion threads finished. Queues are empty - quitting consumer threads\n");
                   break;
                }
             }
@@ -198,6 +195,8 @@ void *work(void *arg_struct) {
    
    fclose(work_file_ins);
    fclose(work_file_rm);
+   //lockfree_queue_destroy();
+   lockfree_queue_stop_watcher();
    pthread_exit(NULL);
    
 }
