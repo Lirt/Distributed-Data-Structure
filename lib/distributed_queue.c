@@ -1,4 +1,8 @@
 
+#ifndef _DEFAULT_SOURCE
+   #define _DEFAULT_SOURCE
+#endif
+
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
    #include "../include/ds_debug.h"
@@ -120,8 +124,9 @@ long *load_bal_src;
 long *load_bal_dest;
 long *load_bal_amount;
 
-FILE *load_balance_log_file;
-FILE *log_file;
+FILE *log_file_lb;
+FILE *log_file_qw;
+FILE *log_file_debug;
 
 /****
  * 
@@ -129,7 +134,7 @@ FILE *log_file;
  * 
  **/
 
-int inline getInsertionTid() {
+int getInsertionTid() {
    struct tid_hash_struct *ths;
    pthread_t pt = pthread_self();
    //printf("CHECK: TID %ld", pt);
@@ -155,7 +160,7 @@ int inline getInsertionTid() {
    return ths->tid;
 }
 
-int inline getRemovalTid() {
+int getRemovalTid() {
    struct tid_hash_struct *ths;
    pthread_t pt = pthread_self();
    //printf("CHECK: TID %ld", pt);
@@ -243,7 +248,9 @@ void lockfree_queue_destroy() {
    
    free(tids);
 
-   fclose(load_balance_log_file);
+   fclose(log_file_lb);
+   fclose(log_file_qw);
+   fclose(log_file_debug);
 
    //pthread_cancel(callback_threads[t]);
    pthread_exit(&callback_threads[t]);
@@ -336,21 +343,27 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    if (stat("/tmp/distributed_queue", &st) == -1) {
       mkdir("/tmp/distributed_queue", 0777);
    }
-   char filename_lb[50] = "/tmp/distributed_queue/lb_debug_log";
-   load_balance_log_file = fopen(filename_lb, "wb");
-   if (load_balance_log_file == NULL)
-      printf("ERROR: Failed to open debug file '%s'\n", filename_lb);
-   LOAD_BALANCE_LOG_DEBUG_TD(t, "Load balancer test log file opened\n");
+   char filename_log_lb[50] = "/tmp/distributed_queue/log_debug_lb";
+   log_file_lb = fopen(filename_log_lb, "wb");
+   if (log_file_lb == NULL)
+      printf("ERROR: Failed to open debug file '%s'\n", filename_log_lb);
+   LOAD_BALANCE_LOG_DEBUG_TD("Load balancer test log file opened\n");
    //LOAD_BALANCE_LOG_DEBUG_T(buf, "Load balancer test log file opened\n");
    //fclose(load_balance_log_file);
    
    /*
     * Open DEBUG log file
     */
-   char filename_log[50] = "/tmp/distributed_queue/debug_log";
-   log_file = fopen(filename_log, "wb");
-   if (log_file == NULL)
-      printf("ERROR: Failed to open debug file '%s'\n", filename_log);
+   char filename_log_debug[50] = "/tmp/distributed_queue/log_debug";
+   log_file_debug = fopen(filename_log_debug, "wb");
+   if (log_file_debug == NULL)
+      printf("ERROR: Failed to open debug file '%s'\n", filename_log_debug);
+   LOG_DEBUG_TD(t, (unsigned long) 0, "Debug test log file opened\n");
+
+   char filename_log_qw[50] = "/tmp/distributed_queue/log_debug_qw";
+   log_file_qw = fopen(filename_log_qw, "wb");
+   if (log_file_qw == NULL)
+      printf("ERROR: Failed to open debug file '%s'\n", filename_log_qw);
    LOG_DEBUG_TD(t, (unsigned long) 0, "Debug test log file opened\n");
 
    /*
@@ -711,10 +724,13 @@ void* lockfree_queue_load_balancer(void* arg) {
    //TODO update condition
    //while (!lockfree_queue_same_size) {
    for (int i = 0 ; i < queue_count; i++) {
-      printf("Load balance round %d\n", i);
+      int tm = (int) time(NULL);
+      LOAD_BALANCE_LOG_DEBUG_TD("Load balance round %d\n", i);
+      //printf("Load balance round %d\n", i);
       for (int j = 0; j < queue_count; j++) {
          q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
-         printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
+         LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
+         //printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
       }
       
       indexes = find_max_min_element_index(q_sizes, queue_count);
@@ -725,8 +741,11 @@ void* lockfree_queue_load_balancer(void* arg) {
       else
          items_to_send = q_sizes[indexes[0]] - estimated_size;
 
-      printf("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
+      //printf("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
+      //  indexes[1], q_sizes[indexes[1]], items_to_send);
+      LOAD_BALANCE_LOG_DEBUG_TD("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
          indexes[1], q_sizes[indexes[1]], items_to_send);
+         
 
       unsigned long n_inserted = 0;
       unsigned long n_removed = 0;
@@ -744,8 +763,8 @@ void* lockfree_queue_load_balancer(void* arg) {
             continue;
          }
          else {
-            int* rt = retval;
-            printf("val: %d\n", *rt);
+            //int* rt = retval;
+            //printf("val: %d\n", *rt);
             n_removed++;
             lockfree_queue_insert_item_by_tid_no_lock(tids[indexes[1]], retval);
             n_inserted++;
@@ -753,12 +772,15 @@ void* lockfree_queue_load_balancer(void* arg) {
          //lockfree_queue_insert_Nitems_by_tid();
       }
 
-      printf("Inserted %ld items, removed %ld items\n", n_inserted, n_removed);
-      printf("LB: Sizes after load balance round %d\n", i);
+      //printf("Inserted %ld items, removed %ld items\n", n_inserted, n_removed);
+      //printf("LB: Sizes after load balance round %d\n", i);
+      LOAD_BALANCE_LOG_DEBUG_TD("Inserted %ld items, removed %ld items\n", n_inserted, n_removed);
+      LOAD_BALANCE_LOG_DEBUG_TD("LB: Sizes after load balance round %d\n", i);
       unsigned long* qsize_history = arg;
       for (int j = 0; j < queue_count; j++) {
          q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
-         printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
+         LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
+         //printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
          qsize_history[j] = q_sizes[j];
       }
       //arg = qsize_history;
@@ -776,7 +798,8 @@ void* lockfree_queue_load_balancer(void* arg) {
    pthread_cond_signal(&load_balance_cond);
    load_balancing_t_running_flag = false;
    pthread_mutex_unlock(&load_balance_mutex);
-   printf("Load balancing thread returning\n");
+   LOAD_BALANCE_LOG_DEBUG_TD("Load balancing thread returning\n");
+   //printf("Load balancing thread returning\n");
    return NULL;
 }
 
@@ -792,7 +815,8 @@ void* lockfree_queue_qsize_watcher() {
    
    bool balance_flag;
 
-   printf("Watching queues\n");
+   QSIZE_WATCHER_LOG_DEBUG_TD("Watching queues\n");
+   //printf("Watching queues\n");
    
    while(1) {
 
@@ -809,7 +833,8 @@ void* lockfree_queue_qsize_watcher() {
          q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
          total_qsize += q_sizes[i];
       }
-      printf("QSIZE WATCHER: total qsize = %ld\n", total_qsize);
+      //printf("QSIZE WATCHER: total qsize = %ld\n", total_qsize);
+      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: total qsize = %ld\n", total_qsize);
       
       if ( qsize_history == NULL ) {
          /*
@@ -830,15 +855,21 @@ void* lockfree_queue_qsize_watcher() {
           */
          for (int i = 0; i < queue_count; i++) {
             if ( (q_sizes[i] < threshold) && (qsize_history[i] >= threshold) ) {
-               printf("QSIZE WATCHER: Q%ld REBALANCE:\n", *tids[i]);
-               printf("Old Q%d size was %ld\n", i, qsize_history[i]);
-               printf("New Q%d size is %ld\n", i, q_sizes[i]);
+               QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Q%ld REBALANCE:\n\
+                  Old Q%d size was %ld\n\
+                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
+               //printf("QSIZE WATCHER: Q%ld REBALANCE:\n", *tids[i]);
+               //printf("Old Q%d size was %ld\n", i, qsize_history[i]);
+               //printf("New Q%d size is %ld\n", i, q_sizes[i]);
                balance_flag = true;
             }
             else {
-               printf("QSIZE WATCHER: Q%ld OK:\n", *tids[i]);
-               printf("Old Q%d size was %ld\n", i, qsize_history[i]);
-               printf("New Q%d size is %ld\n", i, q_sizes[i]);
+               QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Q%ld OK:\n\
+                  Old Q%d size was %ld\n\
+                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
+               //printf("QSIZE WATCHER: Q%ld OK:\n", *tids[i]);
+               //printf("Old Q%d size was %ld\n", i, qsize_history[i]);
+               //printf("New Q%d size is %ld\n", i, q_sizes[i]);
             }
          }
       }
@@ -852,7 +883,8 @@ void* lockfree_queue_qsize_watcher() {
          continue;
       }
    
-      printf("QSIZE WATCHER: Queues turned below threshold - starting load balancer thread.\n");
+      //printf("QSIZE WATCHER: Queues turned below threshold - starting load balancer thread.\n");
+      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Queues turned below threshold - starting load balancer thread.\n");
       pthread_mutex_lock(&load_balance_mutex);
       int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, qsize_history);
       if (rc) {
@@ -860,20 +892,26 @@ void* lockfree_queue_qsize_watcher() {
          exit(-1);
       }
       else {
-         printf("QSIZE WATCHER: Load balance thread started successfuly\n");
+         QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Load balance thread started successfuly\n");
+         //printf("QSIZE WATCHER: Load balance thread started successfuly\n");
          load_balancing_t_running_flag = true;
       }
-      printf("QSIZE WATCHER: Waiting for load balance thread to finish\n");
+      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Waiting for load balance thread to finish\n");
+      //printf("QSIZE WATCHER: Waiting for load balance thread to finish\n");
       /*
        * TODO Recommended to use cond_wait in while loop
        * https://computing.llnl.gov/tutorials/pthreads/#ConditionVariables
        */
       pthread_cond_wait (&load_balance_cond, &load_balance_mutex);
       pthread_mutex_unlock(&load_balance_mutex);
-      printf("QSIZE WATCHER: Got signal from load balancer -> returning to work\n");
-      printf("QSIZE WATCHER: Qsize history after rebalance is:\n");
+
+      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Got signal from load balancer -> returning to work\n\
+         QSIZE WATCHER: Qsize history after rebalance is:\n");
+      //printf("QSIZE WATCHER: Got signal from load balancer -> returning to work\n");
+      //printf("QSIZE WATCHER: Qsize history after rebalance is:\n");
       for (int i = 0; i < queue_count; i++) {
-         printf("Q%d-%ld items\n", i, qsize_history[i]);
+         QSIZE_WATCHER_LOG_DEBUG_TD("Q%d-%ld items\n", i, qsize_history[i]);
+         //printf("Q%d-%ld items\n", i, qsize_history[i]);
       }
    }
    qsize_watcher_t_running_flag = false;

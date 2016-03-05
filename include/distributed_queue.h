@@ -90,6 +90,6 @@ extern unsigned long lockfree_queue_size_total (void);
 extern unsigned long lockfree_queue_size_total_consistent (void);
 extern unsigned long* lockfree_queue_size_total_consistent_allarr (void);
 
-extern int inline getInsertionTid();
-extern int inline getRemovalTid();
+extern int  getInsertionTid();
+extern int  getRemovalTid();
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);
