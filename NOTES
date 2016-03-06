@@ -70,6 +70,7 @@ find / -name "*core.*"
 echo /tmp/core > /proc/sys/kernel/core_pattern
 kernel.core_pattern = /tmp/core
 sysctl -p
+
 gdb /path/to/binary/file /tmp/core.1234
 >thread apply all bt full
 >explore queues[0].head

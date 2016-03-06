@@ -61,8 +61,8 @@ void *work(void *arg_struct) {
    
    struct q_args *args = arg_struct;
    long *tid = args->tid;
-   int q_count = args->q_count;
-   int t_count = args->t_count;
+   //int q_count = args->q_count;
+   //int t_count = args->t_count;
    unsigned long pthread_tid = pthread_self();
    printf("Hello from work - T%ld with TID %ld\n", *tid, pthread_tid);
    

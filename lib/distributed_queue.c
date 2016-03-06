@@ -128,6 +128,7 @@ FILE *log_file_lb;
 FILE *log_file_qw;
 FILE *log_file_debug;
 
+unsigned long moved_items_log;
 /****
  * 
  * Functions
@@ -137,7 +138,6 @@ FILE *log_file_debug;
 int getInsertionTid() {
    struct tid_hash_struct *ths;
    pthread_t pt = pthread_self();
-   //printf("CHECK: TID %ld", pt);
    HASH_FIND_INT( tid_insertion_hashes, &pt, ths );
    if (ths == NULL) {
 
@@ -324,47 +324,32 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    /*
     * Init debug files
     */
-
    
-   int t = (int) time(NULL);
-   //char str_t[20];
-   //sprintf(str_t, "%d", t);
-   //struct tm tm;
-   //char buf[255];
-
-   //memset(&tm, 0, sizeof(struct tm));
-   //strptime(str_t, "%s", &tm);
-   //strftime(buf, sizeof(buf), "%b %d %H:%M %Y", &tm);
-   //puts(buf);
-
-
-
    struct stat st = {0};
+
    if (stat("/tmp/distributed_queue", &st) == -1) {
       mkdir("/tmp/distributed_queue", 0777);
    }
+
    char filename_log_lb[50] = "/tmp/distributed_queue/log_debug_lb";
    log_file_lb = fopen(filename_log_lb, "wb");
    if (log_file_lb == NULL)
       printf("ERROR: Failed to open debug file '%s'\n", filename_log_lb);
-   LOAD_BALANCE_LOG_DEBUG_TD("Load balancer test log file opened\n");
-   //LOAD_BALANCE_LOG_DEBUG_T(buf, "Load balancer test log file opened\n");
-   //fclose(load_balance_log_file);
-   
-   /*
-    * Open DEBUG log file
-    */
-   char filename_log_debug[50] = "/tmp/distributed_queue/log_debug";
-   log_file_debug = fopen(filename_log_debug, "wb");
-   if (log_file_debug == NULL)
-      printf("ERROR: Failed to open debug file '%s'\n", filename_log_debug);
-   LOG_DEBUG_TD(t, (unsigned long) 0, "Debug test log file opened\n");
+   LOAD_BALANCE_LOG_DEBUG_TD("Load balancer log file opened\n");
 
    char filename_log_qw[50] = "/tmp/distributed_queue/log_debug_qw";
    log_file_qw = fopen(filename_log_qw, "wb");
    if (log_file_qw == NULL)
       printf("ERROR: Failed to open debug file '%s'\n", filename_log_qw);
-   LOG_DEBUG_TD(t, (unsigned long) 0, "Debug test log file opened\n");
+   QSIZE_WATCHER_LOG_DEBUG_TD("Qsize Watcher log file opened\n");
+
+   char filename_log_debug[50] = "/tmp/distributed_queue/log_debug";
+   log_file_debug = fopen(filename_log_debug, "wb");
+   if (log_file_debug == NULL)
+      printf("ERROR: Failed to open debug file '%s'\n", filename_log_debug);
+   LOG_DEBUG_TD((unsigned long) 0, "Debug log file opened\n");
+
+   moved_items_log = 0;
 
    /*
     * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
@@ -375,11 +360,8 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
       queue_count = get_nprocs();
    else 
       queue_count = queue_count_arg;
-   //TODO should change all adds and removes from queue and queue operation which 
-   //use queue_count variable to use modulo 2
   
-   printf("Number of cpus by get_nprocs is : %d\n", get_nprocs());
-   printf("Creating %d queues\n", queue_count);
+   LOG_DEBUG_TD((unsigned long) 0, "Number of cpus by get_nprocs is : %d\nCreating %d queues\n", get_nprocs(), queue_count);
    
    queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
    for (i = 0; i < queue_count; i++) {
@@ -395,7 +377,7 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
       atomic_init( &(queues[i]->a_qsize), 0 );
    }
    
-   printf("Queues initialized\n");
+   LOG_DEBUG_TD((unsigned long) 0, "Queues initialized\n");
    
    /*
     * Setup mutexes
@@ -431,7 +413,7 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
     */   
    thread_count = thread_count_arg;
    if ( (thread_count_arg != ONE_TO_ONE) && (thread_count_arg != TWO_TO_ONE) ) {
-      printf("Thread count argument is invalid\n");
+      printf("ERROR: Thread count argument is invalid\n");
       exit(-1);
    }
    if (thread_count_arg == ONE_TO_ONE)
@@ -439,8 +421,7 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    if (thread_count_arg == TWO_TO_ONE)
       thread_count = 2 * queue_count;
    
-   printf("Queue count is %d\n", queue_count);
-   printf("Thread count is %d\n", thread_count);
+   LOG_DEBUG_TD((unsigned long) 0, "Thread count is %d\n", thread_count);
    thread_to_queue_ratio = thread_count / queue_count;
 
    callback_threads = (pthread_t*) malloc (thread_count * sizeof(pthread_t));
@@ -469,10 +450,10 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
          exit(-1);
       }
       
-      printf("Created thread with ID %ld\n", callback_threads[i]);
+      LOG_DEBUG_TD((unsigned long) 0, "Created thread with ID %ld\n", callback_threads[i]);
    }
    
-   printf("%d Threads to callbacks initialized\n", thread_count);
+   LOG_DEBUG_TD((unsigned long) 0, "%d Threads to callbacks initialized\n", thread_count);
    
    /*
     * Initialize load balancer
@@ -483,7 +464,7 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
       exit(-1);
    }
    else {
-         printf("QSize watcher thread initialized\n");
+         LOG_DEBUG_TD((unsigned long) 0, "QSize watcher thread initialized\n");
          qsize_watcher_t_running_flag = true;
    }
    
@@ -524,17 +505,13 @@ void lockfree_queue_free(void *tid) {
 
 void lockfree_queue_insert_item (void* val) {
 
-   //printf("aa: %ld\n", pthread_self());
    int tid = getInsertionTid();
-   //printf("inserting to Q. %d\n", t);
-   //struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok? + volatile?
-   struct ds_lockfree_queue *q = queues[ tid ]; //modulo ok? + volatile?
+   struct ds_lockfree_queue *q = queues[ tid ]; //volatile?
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-   int t = (int) time(NULL);
    if (item == NULL) {
-      printf("Malloc failed\n");
-      LOG_DEBUG_TD(t, (unsigned long) tid, "Malloc failed\n");
+      printf("ERROR: Malloc failed\n");
+      //LOG_DEBUG_TD((unsigned long) tid, "ERROR: Malloc failed\n");
    }
    struct lockfree_queue_item *tmp;
    item->val = val;
@@ -554,7 +531,7 @@ void lockfree_queue_insert_item (void* val) {
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
-      //free(tmp->val);
+      //free(tmp->val); //TODO CHECK IF IT IS NECESSARY TO FREE
       free(tmp);
    }
    
@@ -564,14 +541,14 @@ void lockfree_queue_insert_item (void* val) {
 void lockfree_queue_insert_item_by_tid (void *t, void* val) {
 
    unsigned long *tid = t;
-   //struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok? + volatile?
-   struct ds_lockfree_queue *q = queues[ *tid ]; //modulo ok? + volatile?
+   struct ds_lockfree_queue *q = queues[ *tid ]; //volatile?
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
 
-   int tm = (int) time(NULL);
-   if (item == NULL)
-      LOG_DEBUG_TD(tm, *tid, "Malloc failed\n");
+   if (item == NULL) {
+      printf("ERROR: Malloc failed\n");
+      //LOG_DEBUG_TD(*tid, "ERROR: Malloc failed\n");
+   }
 
    struct lockfree_queue_item *tmp;
    item->val = val;
@@ -601,15 +578,14 @@ void lockfree_queue_insert_item_by_tid (void *t, void* val) {
 void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
 
    unsigned long *tid = t;
-   //struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok? + volatile?
-   struct ds_lockfree_queue *q = queues[ *tid ]; //modulo ok? + volatile?
+   struct ds_lockfree_queue *q = queues[ *tid ]; //volatile?
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    
-   int tm = (int) time(NULL);
-   if (item == NULL)
-      LOG_DEBUG_TD(tm, *tid, "Malloc failed\n");
-
+   if (item == NULL) {
+      printf("ERROR: Malloc failed\n");
+      //LOG_DEBUG_TD(*tid, "Malloc failed\n");
+   }
    struct lockfree_queue_item *tmp;
    item->val = val;
    item->next = NULL;   //TODO ?
@@ -637,8 +613,7 @@ void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
 void lockfree_queue_insert_Nitems_by_tid (void** values, int item_count) {
 
    int tid = getInsertionTid();
-   //volatile struct ds_lockfree_queue *q = queues[ *t % queue_count ]; //modulo ok?
-   volatile struct ds_lockfree_queue *q = queues[ tid ]; //modulo ok?
+   volatile struct ds_lockfree_queue *q = queues[ tid ]; //volatile?
 
    struct lockfree_queue_item *item;
    struct lockfree_queue_item *item_tmp;
@@ -647,16 +622,17 @@ void lockfree_queue_insert_Nitems_by_tid (void** values, int item_count) {
 
    item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    
-   int t = (int) time(NULL);
-   if (item == NULL)
-      LOG_DEBUG_TD(t, (unsigned long) tid, "Malloc failed\n");
+   if (item == NULL) {
+      printf("ERROR: Malloc failed\n");
+      //LOG_DEBUG_TD((unsigned long) tid, "Malloc failed\n");
+   }
 
    //item->val = *values[0]; //TODO FIX -- TRY COMPILE
    item_first_new = item;
    for (int i = 1; i < item_count; i++) {
       item_tmp = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
       if (item_tmp == NULL)
-         LOG_DEBUG_TD(t, (unsigned long) tid, "Malloc failed\n");
+         LOG_DEBUG_TD((unsigned long) tid, "Malloc failed\n");
       item_tmp->val = values[i];
       item->next = item_tmp;
       item = item->next;
@@ -690,8 +666,6 @@ void lockfree_queue_insert_Nitems_by_tid (void** values, int item_count) {
 void* lockfree_queue_load_balancer(void* arg) {
    
    //TODO len premiestnit smernik na polozku, od ktorej je pocet potrebnych premiestnenych poloziek do druheho radu
-   //TODO IF ARG == NULL DONT USE QSIZE HISTORY
-
 
    LOAD_BALANCE_LOG_DEBUG_TD("Load balance thread started successfuly\n");
    //printf("QSIZE WATCHER: Load balance thread started successfuly\n");
@@ -702,8 +676,6 @@ void* lockfree_queue_load_balancer(void* arg) {
    for (int i = 0; i < queue_count; i++) {
       pthread_mutex_lock(&add_mutexes[*tids[i]]);
       pthread_mutex_lock(&rm_mutexes[*tids[i]]);
-      //pthread_mutex_lock(&add_mutexes[i]);
-      //pthread_mutex_lock(&rm_mutexes[i]);
    }
    
    /*
@@ -711,23 +683,19 @@ void* lockfree_queue_load_balancer(void* arg) {
     * count estimated size
     * count who should give whom what amount of items
     * TODO strategy pattern
+    * TODO dynamic threshold setting -> to qsize watcher
     */
    
-   //avg_count
    //Do not use function lockfree_queue_size_total_consistent(), because mutexes are already locked. 
    unsigned int total = lockfree_queue_size_total();  
    unsigned int estimated_size = total / queue_count;
    
    int *indexes = (int*) malloc (2 * sizeof(int)); //indexes for largest[0] and smallest[1] queue
    unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
-   //unsigned long q_diff;
    unsigned long items_to_send;
 
-   //swap
-   //TODO update condition
-   //while (!lockfree_queue_same_size) {
+   //TODO update condition, relocate data (queue_count - 1) loops?
    for (int i = 0 ; i < queue_count; i++) {
-      int tm = (int) time(NULL);
       LOAD_BALANCE_LOG_DEBUG_TD("Load balance round %d\n", i);
       //printf("Load balance round %d\n", i);
       for (int j = 0; j < queue_count; j++) {
@@ -737,7 +705,6 @@ void* lockfree_queue_load_balancer(void* arg) {
       }
       
       indexes = find_max_min_element_index(q_sizes, queue_count);
-      //q_diff = q_sizes[indexes[0]] - q_sizes[indexes[1]];
 
       if ( (q_sizes[indexes[0]] - (abs(q_sizes[indexes[1]] - estimated_size))) >= estimated_size )
          items_to_send = abs(q_sizes[indexes[1]] - estimated_size);
@@ -748,36 +715,14 @@ void* lockfree_queue_load_balancer(void* arg) {
       //  indexes[1], q_sizes[indexes[1]], items_to_send);
       LOAD_BALANCE_LOG_DEBUG_TD("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
          indexes[1], q_sizes[indexes[1]], items_to_send);
-         
 
-      unsigned long n_inserted = 0;
-      unsigned long n_removed = 0;
-      void *retval;
-      for (int j = 0; j < items_to_send; j++ ) {
+      /*
+       * remove N items from queue queues[indexes[0]] (queue with more items)
+       * add N items to queue queues[indexes[1]]]
+       */
+      lockfree_queue_move_items(indexes[0], indexes[1], items_to_send);
 
-         //remove N items from queue queues[indexes[0]] (queue with less items)
-         //add N items to queue queues[indexes[1]]]
-
-         //TODO Cannot be remove int. must be generic swap
-         //retval = (int*) malloc (sizeof(int));
-         retval = lockfree_queue_remove_item_by_tid_no_lock(tids[indexes[0]], 0);
-         if ( retval == NULL ) {
-            printf("LB: remove item failed\n");
-            continue;
-         }
-         else {
-            //int* rt = retval;
-            //printf("val: %d\n", *rt);
-            n_removed++;
-            lockfree_queue_insert_item_by_tid_no_lock(tids[indexes[1]], retval);
-            n_inserted++;
-         }
-         //lockfree_queue_insert_Nitems_by_tid();
-      }
-
-      //printf("Inserted %ld items, removed %ld items\n", n_inserted, n_removed);
       //printf("LB: Sizes after load balance round %d\n", i);
-      LOAD_BALANCE_LOG_DEBUG_TD("Inserted %ld items, removed %ld items\n", n_inserted, n_removed);
       LOAD_BALANCE_LOG_DEBUG_TD("LB: Sizes after load balance round %d\n", i);
       
       if ( arg != NULL ) {
@@ -789,8 +734,6 @@ void* lockfree_queue_load_balancer(void* arg) {
             qsize_history[j] = q_sizes[j];
          }
       }
-      //arg = qsize_history;
-
    }
    
    free(indexes);
@@ -801,7 +744,6 @@ void* lockfree_queue_load_balancer(void* arg) {
       pthread_mutex_unlock(&rm_mutexes[*tids[i]]);
    }
 
-   //pthread_cond_signal(&load_balance_cond);
    pthread_cond_broadcast(&load_balance_cond);
    load_balancing_t_running_flag = false;
    pthread_mutex_unlock(&load_balance_mutex);
@@ -810,6 +752,55 @@ void* lockfree_queue_load_balancer(void* arg) {
    return NULL;
 }
 
+void lockfree_queue_move_items(int q_id_src, int q_id_dest, unsigned long count) {
+
+   /*
+    * Does not lock queues
+    */
+
+   if ( count == 0 ) {
+      return;
+   }
+
+   struct ds_lockfree_queue *q_src = queues[ q_id_src ];
+   struct ds_lockfree_queue *q_dest = queues[ q_id_dest ];
+
+   unsigned long q_size_src = atomic_load( &(q_src->a_qsize) );
+   //unsigned long q_size_dest = atomic_load( &(q_dest->a_qsize) );
+
+   struct lockfree_queue_item *tmp_div;
+   struct lockfree_queue_item *tmp_div_next;
+   tmp_div_next = q_src->divider->next;
+   tmp_div = q_src->divider;
+
+   //printf("Count=%ld, Q_SRC_SIZE=%ld, Q_DST_SIZE=%ld\n", count, q_size_src, q_size_dest);
+
+
+   if ( count > q_size_src ) {
+      printf("ERROR: Cannot move more items(%ld) than queue size(%ld)\n", count, q_size_src);
+      return;
+   }
+   //if ( count == q_size_src ) {
+   //   q_from->tail = q_from->divider;
+   //   q_from->divider->next = NULL;
+   //}
+   if ( count <= q_size_src ) {
+      for (int i = 0; i < count; i++) {
+         tmp_div = tmp_div->next;
+      }
+      q_src->divider->next = tmp_div->next;
+
+      tmp_div->next = NULL;
+      q_dest->tail->next = tmp_div_next;
+      q_dest->tail = tmp_div;
+   }
+
+   atomic_fetch_sub( &(q_src->a_qsize), count);
+   atomic_fetch_add( &(q_dest->a_qsize), count);
+   moved_items_log += count;
+   LOAD_BALANCE_LOG_DEBUG_TD("Moved items count = %ld\n", moved_items_log);
+
+}
 
 void* lockfree_queue_qsize_watcher() {
    
@@ -1128,9 +1119,8 @@ void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
    
    int tid = getRemovalTid();
    void **val_arr = malloc(N * sizeof(void*));
-   int t = (int) time(NULL);
    if (val_arr == NULL)
-      LOG_DEBUG_TD(t, (unsigned long) tid, "Malloc failed\n");
+      LOG_DEBUG_TD((unsigned long) tid, "Malloc failed\n");
    
    //volatile struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
    volatile struct ds_lockfree_queue *q = queues[ tid ]; //modulo ok?
@@ -1139,7 +1129,7 @@ void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
    
    unsigned long item_count = atomic_load( &(q->a_qsize) ); 
    if ( atomic_load( &(q->a_qsize) ) < N ) {
-      printf("Not enough items in queue %d. There are %ld but was requested %ld.\n", t, item_count, N);
+      printf("Not enough items in queue %d. There are %ld but was requested %ld.\n", tid, item_count, N);
       pthread_mutex_unlock(&rm_mutexes[tid]);
       return NULL;
    }
@@ -1156,8 +1146,8 @@ void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
    }
 
    if (i != N-1) {
-      printf("Function did not return requested numbers from queue %d. number of returned values is %ld.\n", t, i);
-      pthread_mutex_unlock(&rm_mutexes[t]);
+      printf("Function did not return requested numbers from queue %d. number of returned values is %ld.\n", tid, i);
+      pthread_mutex_unlock(&rm_mutexes[tid]);
       return NULL;
    }
    

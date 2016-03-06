@@ -79,6 +79,7 @@ extern void lockfree_queue_init_callback (void *(*callback)(void *args), void *a
 extern void lockfree_queue_insert_item (void *val);
 extern void lockfree_queue_insert_item_by_tid (void *tid, void *val);
 extern void lockfree_queue_insert_item_by_tid_no_lock (void *tid, void *val);
+extern void lockfree_queue_move_items(int q_id_from, int q_id_to, unsigned long count);
 extern void* lockfree_queue_qsize_watcher();
 extern void* lockfree_queue_load_balancer();
 extern void* lockfree_queue_remove_item (int timeout);
