@@ -20,7 +20,7 @@ extern FILE *log_file_lb;
 		TIME, __FILE__, __LINE__, THREAD, MESSAGE, ##__VA_ARGS__)
 	#define LOG_DEBUG_TD(TIME, THREAD, MESSAGE, ...) fprintf(log_file_debug, "[DEBUG]: %d %s:%d: Thread '%ld': %s\n", \
 		TIME, __FILE__, __LINE__, THREAD, MESSAGE, ##__VA_ARGS__)
-	
+
 	#define LOAD_BALANCE_LOG_DEBUG_T(TIME, MESSAGE, ...) fprintf(log_file_lb, "[LB DEBUG]: (%s %s:%d): %s \n", \
 		TIME, __FILE__, __LINE__, MESSAGE, ##__VA_ARGS__)
 	#define LOAD_BALANCE_LOG_DEBUG_TD(MESSAGE, ...) \
@@ -38,6 +38,8 @@ extern FILE *log_file_lb;
 #else
    	#define LOG_DEBUG(TIME, ...)
 	#define LOG_DEBUG_TD(TIME, ...)
+	#define QSIZE_WATCHER_LOG_DEBUG_TD(MESSAGE, ...)
+	#define LOAD_BALANCE_LOG_DEBUG_TD(MESSAGE, ...)
 #endif
 
 #define CLEAN_ERRNO() (errno == 0 ? "No error message" : strerror(errno))

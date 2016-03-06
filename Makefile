@@ -3,6 +3,8 @@ GCC=gcc
 CC=$(GCC)
 HASHDIR=../uthash/src
 
+DDEBUG=-DDEBUG
+#DDEBUG=""
 DEBUG=-g
 WARN=-Wall
 STD=-std=c11

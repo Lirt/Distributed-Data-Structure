@@ -410,6 +410,12 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
    pthread_mutexattr_init(&mutex_attr);
 
+   //pthread_condattr_init (attr)
+   pthread_cond_init (&load_balance_cond, NULL);
+   pthread_mutex_init(&load_balance_mutex, &mutex_attr);
+   load_balancing_t_running_flag = false;
+   qsize_watcher_t_running_flag = false;
+
    add_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
    rm_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
    for (int i = 0; i < queue_count; i++) {
@@ -470,15 +476,7 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
    
    /*
     * Initialize load balancer
-    */ 
-   
-   //pthread_condattr_init (attr)
-   pthread_cond_init (&load_balance_cond, NULL);
-   pthread_mutex_init(&load_balance_mutex, &mutex_attr);
-   load_balancing_t_running_flag = false;
-   qsize_watcher_t_running_flag = false;
-   
-   
+    */    
    rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
    if (rc) {
       printf("ERROR: return code from pthread_create() is %d\n", rc);
@@ -692,6 +690,11 @@ void lockfree_queue_insert_Nitems_by_tid (void** values, int item_count) {
 void* lockfree_queue_load_balancer(void* arg) {
    
    //TODO len premiestnit smernik na polozku, od ktorej je pocet potrebnych premiestnenych poloziek do druheho radu
+   //TODO IF ARG == NULL DONT USE QSIZE HISTORY
+
+
+   LOAD_BALANCE_LOG_DEBUG_TD("Load balance thread started successfuly\n");
+   //printf("QSIZE WATCHER: Load balance thread started successfuly\n");
 
    pthread_mutex_lock(&load_balance_mutex);
 
@@ -776,26 +779,30 @@ void* lockfree_queue_load_balancer(void* arg) {
       //printf("LB: Sizes after load balance round %d\n", i);
       LOAD_BALANCE_LOG_DEBUG_TD("Inserted %ld items, removed %ld items\n", n_inserted, n_removed);
       LOAD_BALANCE_LOG_DEBUG_TD("LB: Sizes after load balance round %d\n", i);
-      unsigned long* qsize_history = arg;
-      for (int j = 0; j < queue_count; j++) {
-         q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
-         LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
-         //printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
-         qsize_history[j] = q_sizes[j];
+      
+      if ( arg != NULL ) {
+         unsigned long* qsize_history = arg;
+         for (int j = 0; j < queue_count; j++) {
+            q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
+            LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
+            //printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
+            qsize_history[j] = q_sizes[j];
+         }
       }
       //arg = qsize_history;
 
    }
    
+   free(indexes);
+
    //unlock Qs
    for (int i = 0; i < queue_count; i++) {
       pthread_mutex_unlock(&add_mutexes[*tids[i]]);
       pthread_mutex_unlock(&rm_mutexes[*tids[i]]);
    }
-   
-   free(indexes);
 
-   pthread_cond_signal(&load_balance_cond);
+   //pthread_cond_signal(&load_balance_cond);
+   pthread_cond_broadcast(&load_balance_cond);
    load_balancing_t_running_flag = false;
    pthread_mutex_unlock(&load_balance_mutex);
    LOAD_BALANCE_LOG_DEBUG_TD("Load balancing thread returning\n");
@@ -826,6 +833,19 @@ void* lockfree_queue_qsize_watcher() {
       
       //Sleep for a while for less overhead
       usleep(50000);
+
+      bool lbft = false;
+
+      if (load_balancing_t_running_flag) {
+         lbft = true;
+      }
+      while(load_balancing_t_running_flag) {
+         ;
+      }
+      if (lbft) {
+         //printf("Load balancing ended in REMOVE, continuing in work\n");
+         QSIZE_WATCHER_LOG_DEBUG_TD("Load balancing ended in REMOVE, continuing in work\n");
+      }
 
       //Get qsizes (non-consistent)
       //total_qsize = lockfree_queue_size_total();
@@ -884,34 +904,39 @@ void* lockfree_queue_qsize_watcher() {
       }
    
       //printf("QSIZE WATCHER: Queues turned below threshold - starting load balancer thread.\n");
-      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Queues turned below threshold - starting load balancer thread.\n");
-      pthread_mutex_lock(&load_balance_mutex);
-      int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, qsize_history);
-      if (rc) {
-         printf("ERROR: return code from pthread_create() is %d\n", rc);
-         exit(-1);
+      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Queues turned below threshold\n");
+      
+      if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
+         load_balancing_t_running_flag = true;
+         QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Starting load balancer thread.\n");
+         int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, qsize_history);
+         if (rc) {
+            printf("ERROR: return code from pthread_create() is %d\n", rc);
+            exit(-1);
+         }
+
+         QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Waiting for load balance thread to finish\n");
+         //printf("QSIZE WATCHER: Waiting for load balance thread to finish\n");
+         /*
+          * TODO Recommended to use cond_wait in while loop
+          * https://computing.llnl.gov/tutorials/pthreads/#ConditionVariables
+          */
+         pthread_cond_wait (&load_balance_cond, &load_balance_mutex);
+         pthread_mutex_unlock(&load_balance_mutex);
+
+         QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Got signal from load balancer -> returning to work\n\
+            QSIZE WATCHER: Qsize history after rebalance is:\n");
+         //printf("QSIZE WATCHER: Got signal from load balancer -> returning to work\n");
+         //printf("QSIZE WATCHER: Qsize history after rebalance is:\n");
+         for (int i = 0; i < queue_count; i++) {
+            QSIZE_WATCHER_LOG_DEBUG_TD("Q%d-%ld items\n", i, qsize_history[i]);
+            //printf("Q%d-%ld items\n", i, qsize_history[i]);
+         }
       }
       else {
-         QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Load balance thread started successfuly\n");
-         //printf("QSIZE WATCHER: Load balance thread started successfuly\n");
-         load_balancing_t_running_flag = true;
-      }
-      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Waiting for load balance thread to finish\n");
-      //printf("QSIZE WATCHER: Waiting for load balance thread to finish\n");
-      /*
-       * TODO Recommended to use cond_wait in while loop
-       * https://computing.llnl.gov/tutorials/pthreads/#ConditionVariables
-       */
-      pthread_cond_wait (&load_balance_cond, &load_balance_mutex);
-      pthread_mutex_unlock(&load_balance_mutex);
-
-      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Got signal from load balancer -> returning to work\n\
-         QSIZE WATCHER: Qsize history after rebalance is:\n");
-      //printf("QSIZE WATCHER: Got signal from load balancer -> returning to work\n");
-      //printf("QSIZE WATCHER: Qsize history after rebalance is:\n");
-      for (int i = 0; i < queue_count; i++) {
-         QSIZE_WATCHER_LOG_DEBUG_TD("Q%d-%ld items\n", i, qsize_history[i]);
-         //printf("Q%d-%ld items\n", i, qsize_history[i]);
+         //printf("Load Balancer already running in remove\n");
+         QSIZE_WATCHER_LOG_DEBUG_TD("Load Balancer already running in remove\n");
+         continue;
       }
    }
    qsize_watcher_t_running_flag = false;
@@ -935,11 +960,6 @@ void* lockfree_queue_remove_item (int timeout) {
 
    void* val = NULL;
    int tid = getRemovalTid();
-
-   if ( lockfree_queue_is_empty(&tid) ) {
-      //printf("Queue %ld is empty\n", *t);
-      return val;
-   }
    
    //struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
    struct ds_lockfree_queue *q = queues[ tid ]; //modulo ok?
@@ -947,18 +967,75 @@ void* lockfree_queue_remove_item (int timeout) {
 
    pthread_mutex_lock(&rm_mutexes[tid]);
    
-   //TODO timeout spin
+   //TODO timeout spin will try if q->divider is != q-> tail in while, but needs to be timed to nano or microseconds
    //if (timeout > 0)
    //   usleep(timeout);
-   
+
    if ( q->divider != q->tail ) {   //atomic reads?
       val = q->divider->next->val;
       q->divider = q->divider->next;
       atomic_fetch_sub( &(q->a_qsize), 1);
    }
    else {
-      //TODO check other queues and relocate data to queues to be same sized
-      //Or set special variable which signalize which Q was empty and wanted to get item to 1
+      while(1) {
+         /*
+          * pthread_mutex_trylock returns 0 if lock is acquired
+          */
+         
+         //printf("Queue %ld is empty\n", *t);
+
+         if ( lockfree_queue_size_total() == 0 ) {
+            //printf("Queues are empty\n");
+            break;
+         }
+
+         if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
+            
+            load_balancing_t_running_flag = true;
+            int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, NULL);
+            if (rc) {
+               printf("ERROR: return code from pthread_create() is %d\n", rc);
+               exit(-1);
+            }
+            else {
+               //QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Waiting for load balance thread to finish\n");
+               //printf("REMOVE T%d: Waiting for load balance thread to finish\n", tid);
+               /*
+                * TODO Recommended to use cond_wait in while loop
+                * https://computing.llnl.gov/tutorials/pthreads/#ConditionVariables
+                */
+
+               //TODO rm mutex for this thread must be unlocked
+               //may cause harm in other parts of code... 
+               pthread_mutex_unlock(&rm_mutexes[tid]);
+               pthread_cond_wait(&load_balance_cond, &load_balance_mutex);
+               pthread_mutex_unlock(&load_balance_mutex);
+               
+               pthread_mutex_lock(&rm_mutexes[tid]);
+               if ( q->divider != q->tail ) {   //atomic reads?
+                  val = q->divider->next->val;
+                  q->divider = q->divider->next;
+                  atomic_fetch_sub( &(q->a_qsize), 1);
+                  break;
+               }
+            }
+         }
+         else {
+            //printf("REMOVE T%d: Load balancer already running\n", tid);
+            pthread_mutex_unlock(&rm_mutexes[tid]);
+            while (load_balancing_t_running_flag == true) {
+               //TODO wait but dont use CPU ?
+               ;
+            }
+            pthread_mutex_lock(&rm_mutexes[tid]);
+            if ( q->divider != q->tail ) {   //atomic reads?
+               val = q->divider->next->val;
+               q->divider = q->divider->next;
+               atomic_fetch_sub( &(q->a_qsize), 1);
+               break;
+            }
+         }
+      }
    }
    
    pthread_mutex_unlock(&rm_mutexes[tid]);
@@ -1103,7 +1180,7 @@ unsigned long lockfree_queue_size_by_tid (void *tid) {
 }
 
 
-unsigned long lockfree_queue_size_total () {
+unsigned long lockfree_queue_size_total() {
    //TODO test
    
    unsigned long size = 0;
