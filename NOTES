@@ -1,8 +1,62 @@
+#!!! NEEDED TO LOAD MPI
+module load mpi/openmpi-x86_64
+module load mpi/mpich-x86_64
+module avail mpi
+
+/usr/include/mpich-x86_64
+/usr/share/man/mpich-x86_64
+/usr/share/doc/mpich
+/usr/share/mpich
+/etc/modulefiles/mpi
+dnf install environment-modules-3.2.10-16.fc23.x86_64
+
+
+###
+int rank, size;
+
+MPI_Init(&argc, &argv);
+
+MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+MPI_Comm_size(MPI_COMM_WORLD, &size);
+printf("I am %d of %d\n", rank + 1, size);
+
+MPI_Finalize();
+###
+Launch 16 processes on 4 nodes (each has 4 cores)
+   mpiexec –hosts h1:4,h2:4,h3:4,h4:4 –n 16 ./test
+Runs the first four processes on h1, the next four on h2, etc.
+   mpiexec –hosts h1,h2,h3,h4 –n 16 ./test
+Runs the first process on h1, the second on h2, etc., and wraps around
+So, h1 will have the 1st, 5th, 9th and 13th processes
+If there are many nodes, it might be easier to create a host file
+   cat hf
+      h1:4
+      h2:2
+   mpiexec –hostfile hf –n 16 ./test
+###
+#####
+Using MPICH with totalview:
+   totalview –a mpiexec –n 6 ./test
+Using MPICH with ddd (or gdb) on one process:
+   mpiexec –n 4 ./test : -n 1 ddd ./test : -n 1 ./test
+Launches the 5th process under “ddd” and all other processes normally
+#####
+MPI_BARRIER(comm)
+   Blocks until all processes in the group of the communicator comm call it
+   A process cannot get out of the barrier until all other processes have reached barrier
+#####
+You can find out which tag the sender used with the help of MPI_Probe.
+#####
+
+
 #Running multiple executables with mpirun
+mpicc ..
 mpirun host_a -np 6 a.out : host_a -nt 4 b.out
+mpiexec -n 4 a.out
 
 #using hostfile
 mpirun -hostfile myhostfile ./a.out
+
 
 #hostfile template
 % cat myhostfile
@@ -75,6 +129,16 @@ gdb /path/to/binary/file /tmp/core.1234
 >thread apply all bt full
 >explore queues[0].head
 >print *(struct lockfree_queue_item *) 0x7ffff014bb10
+
+#MPI DEBUG
+mpiexec -n X gdb ./a.out
+mpiexec -n 1 gdb ./a.out : -n X-1 ./a.out
+gdb <program_name> <process_number> #attach
+
+#In your source code define an integer variable named something like "DebugWait", initialize it to 1, and #insert code like
+#  while (DebugWait) ;
+#at the very beginning of main(). When you attach gdb to the two Prime processes, both will be stuck at that #"while" loop line -- which is exactly what you want. Then for both of them, give the gdb command
+#  (gdb) set DebugWait = 0
 
 break distributed_queue.c:741
 print (long) *tids[0]

@@ -1,6 +1,7 @@
 MPICC=mpicc
 GCC=gcc
-CC=$(GCC)
+#CC=$(GCC)
+CC=$(MPICC)
 HASHDIR=../uthash/src
 
 DDEBUG=-DDEBUG
