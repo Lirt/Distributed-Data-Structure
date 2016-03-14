@@ -78,12 +78,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-/*
- * TODO
- * 1. Scitat procesorovy cas pre kazde vlakno a vypisat statistiku
- * 2. Rozbehnut MPI a vytvorit vlakno, ktore pocuva docasneho mastra na scitanie velkosti globalnej DS
- */
-
 typedef struct tid_hash_struct {
     unsigned long id;      /* key */
     int tid;
@@ -94,11 +88,10 @@ typedef struct tid_hash_struct {
  * Lock-free queue
  ***
  *
- *
  * GLOBAL VARIABLES
- */
-
+ *
 /*****
+ *
  * MPI GLOBAL VARIABLES
  */
 int comm_size, comm_rank, master_id;
@@ -131,13 +124,20 @@ pthread_mutex_t qsize_watcher_mutex;   //NOT USED SO FAR
 
 bool load_balancing_t_running_flag;
 bool qsize_watcher_t_running_flag;
+bool qsize_watcher_t_enable;
 
 unsigned long *qsize_history = NULL;
-long q_threshold = 1000;
+double local_threshold_percent = 20.00;
+double global_threshold_percent = 20.00;
+double local_threshold_static = 20000;
+double global_threshold_static = 100000;
+unsigned int len_s = 3;
+unsigned int threshold_type = 0;
 
-//http://stackoverflow.com/questions/19197836/algorithm-to-evenly-distribute-values-into-containers
-//http://stackoverflow.com/questions/15258908/best-strategy-to-distribute-number-into-groups-evenly
-//https://en.wikipedia.org/wiki/Partition_problem
+atomic_ulong rm_count;         //stores per queue amount of removes per second
+atomic_ulong rm_count_last;    //stores per queue amount of removes from last second
+pthread_t remove_count_nuller;       //swaps rm_count of every queue every second to rm_count_last and nulls rm_count
+
 long *load_bal_src;
 long *load_bal_dest;
 long *load_bal_amount;
@@ -150,11 +150,10 @@ FILE *log_file_debug;
 /*
  * Statistical variables
  */
-unsigned long moved_items_log;
-unsigned long load_balancer_call_count_watcher;
-unsigned long load_balancer_call_count_remove;
-unsigned long load_balancer_call_count_global;
-//TODO THIS
+atomic_ulong moved_items_log;
+atomic_ulong load_balancer_call_count_watcher;
+atomic_ulong load_balancer_call_count_remove;
+atomic_ulong load_balancer_call_count_global;
 
 /*
  * GLOBAL BALANCING
@@ -167,7 +166,7 @@ pthread_cond_t load_balance_global_cond;
 
 bool global_balancing_enable; //True enables global balancing, False disables global balancing
 double last_rebalance_time;   //For elimination of flooding network with global rebalance requests
-//TODO find functions to get time with miliseconds
+//TODO 
 
 /****
  * 
@@ -354,194 +353,204 @@ bool lockfree_queue_is_empty_all_consistent_local() {
    
 }
 
-void lockfree_queue_init_callback (void* (*callback)(void *args), void* arguments, unsigned int queue_count_arg, unsigned int thread_count_arg) {
+void lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, 
+  unsigned int queue_count_arg, unsigned int thread_count_arg, 
+  bool qw_thread_enable_arg, double local_lb_threshold_percent, double global_lb_threshold_percent, 
+  unsigned long local_lb_threshold_static, unsigned long global_lb_threshold_static, unsigned int local_lb_type ) {
 
    //TODO documentation must contain struct used for arguments in thread callback
+
+  /*
+   * Local load balance type values are:
+   * '0' for STATIC, 
+   * '1' for PERCENT, 
+   * '2' for DYNAMIC
+   */
    
-   /*
-    * DEBUG START FOR GDB
-    * Uncomment while loop for enabling waiting for gdb attach
-    * Then in gdb do: "set var debug_wait = 1" to unlock while loop and start program
-    */
+  /*
+   * DEBUG START FOR GDB
+   * Uncomment while loop for enabling waiting for gdb attach
+   * Then in gdb do: "set var debug_wait = 1" to unlock while loop and start program
+   */
+  int debug_wait = 0;
+  char hostname[256];
+  pid_t pid = getpid();
+  int pid_int = (int) pid;
+  gethostname(hostname, sizeof(hostname));
+  printf("-----------CONFIGURATION-----------\nPID: %d\nNode: %s\n", pid, hostname);
+  fflush(stdout);
+  //while (debug_wait == 0)
+  //   sleep(1);
+  //}
+
+
+  /*
+   * MPI CONFIG
+   */
+  int rc;
+  char processor_name[MPI_MAX_PROCESSOR_NAME];
+  int processor_name_length;
+  int required = MPI_THREAD_MULTIPLE;
+  int provided;
+  int claimed;
+
+  /*
+   * MPI Init with multiple thread support
+   */
+  //rc = MPI_Init_thread(&argc, &argv, required, &provided);
+  rc = MPI_Init_thread(NULL, NULL, required, &provided);
+  if (rc != MPI_SUCCESS) {
+    //TODO write MPI_Error_string on error
+    fprintf(stderr, "ERROR: Error in MPI thread init\n");
+    exit(-1);
+  }
+
+  MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &comm_rank);
+  rc = MPI_Get_processor_name(processor_name, &processor_name_length);
+  if (rc != MPI_SUCCESS) {
+    fprintf(stderr, "ERROR: Node %d: Error in getting processor name\n", comm_rank);
+    exit(-1);
+  }
+  printf("Task_count: %d\nCOMM_RANK: %d\nProcessor_name: '%s'\nRequired_thread_level: %d\n", comm_size, comm_rank, processor_name, required);
+
+  rc = MPI_Query_thread(&claimed);
+  if (rc != MPI_SUCCESS) {
+    fprintf(stderr, "ERROR: Node %d: Error query thread\n", comm_rank);
+    exit(-1);
+  }
+  printf("Provided_thread_level: %d\n", provided);
+
+  /*
+   * Init debug files
+   */
+
+  struct stat st = {0};
+
+  if (stat("/tmp/distributed_queue", &st) == -1) {
+    mkdir("/tmp/distributed_queue", 0777);
+  }
+
+  char pid_str[8];
+  sprintf(pid_str, "%d", pid_int);
+
+  char filename_log_lb[50] = "/tmp/distributed_queue/log_debug_lb";
+  strcat(filename_log_lb, pid_str);
+  log_file_lb = fopen(filename_log_lb, "wb");
+  if (log_file_lb == NULL)
+    printf("ERROR: Failed to open debug file '%s'\n", filename_log_lb);
+  LOAD_BALANCE_LOG_DEBUG_TD("Load balancer log file opened\n");
+
+  char filename_log_qw[50] = "/tmp/distributed_queue/log_debug_qw";
+  strcat(filename_log_qw, pid_str);
+  log_file_qw = fopen(filename_log_qw, "wb");
+  if (log_file_qw == NULL)
+    printf("ERROR: Failed to open debug file '%s'\n", filename_log_qw);
+  QSIZE_WATCHER_LOG_DEBUG_TD("Qsize Watcher log file opened\n");
+
+  char filename_log_debug[50] = "/tmp/distributed_queue/log_debug";
+  strcat(filename_log_debug, pid_str);
+  log_file_debug = fopen(filename_log_debug, "wb");
+  if (log_file_debug == NULL)
+    printf("ERROR: Failed to open debug file '%s'\n", filename_log_debug);
+  LOG_DEBUG_TD((unsigned long) 0, "Debug log file opened\n");
+
+  /*
+   * Variables initialization
+   */
+
+  atomic_init(&moved_items_log, 0);
+  atomic_init(&load_balancer_call_count_watcher, 0);
+  atomic_init(&load_balancer_call_count_remove, 0);
+  atomic_init(&load_balancer_call_count_global, 0);
+  atomic_init(&rm_count, 0);
+  atomic_init(&rm_count_last, 0);
+
+  /*
+   * ID of master node on start of program is 0 and is saved in master_id variable
+   */
+  master_id = 0;
+
+  /*
+   * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
+   */
+
+  if (queue_count_arg == 0 || queue_count_arg == NULL ) 
+    queue_count = get_nprocs();
+  else 
+    queue_count = queue_count_arg;
+
+  LOG_DEBUG_TD((unsigned long) 0, "Number of cpus by get_nprocs is : %d\nCreating %d queues\n", get_nprocs(), queue_count);
+  printf("CPU_COUNT: %d\nQUEUE_COUNT: %d\n", get_nprocs(), queue_count);
+
+  queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
+  for (i = 0; i < queue_count; i++) {
+    queues[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
+  }
+
+  /*
+   * Queue initialization
+   */
+  for (i = 0; i < queue_count; i++) {
+    queues[i]->head = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+    queues[i]->head->next = NULL;
+    queues[i]->tail = queues[i]->head;
+    queues[i]->divider = queues[i]->head;
+    atomic_init( &(queues[i]->a_qsize), 0 );
+  }   
+
+  /*
+   * Setup mutexes
+   */
+
+  int *oldstate = NULL;
+  int *oldtype = NULL;
+  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, oldstate);
+  pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, oldtype);
+
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  pthread_mutexattr_init(&mutex_attr);
+
+  /*
+   * For creating hash table with thread id mapping
+   */
+  pthread_mutex_init(&insertionTidMutex, &mutex_attr);
+  pthread_mutex_init(&removalTidMutex, &mutex_attr);
+
+  //pthread_condattr_init (attr)
+  pthread_cond_init (&load_balance_cond, NULL);
+  pthread_mutex_init(&load_balance_mutex, &mutex_attr);
+  pthread_mutex_init(&load_balance_global_mutex, &mutex_attr);
+  pthread_cond_init(&load_balance_global_cond, NULL);
+  pthread_mutex_init(&qsize_watcher_mutex, &mutex_attr);
+  load_balancing_t_running_flag = false;
+  qsize_watcher_t_running_flag = false;
+
+  add_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
+  rm_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
+  for (int i = 0; i < queue_count; i++) {
+    pthread_mutex_init(&add_mutexes[i], &mutex_attr);
+    pthread_mutex_init(&rm_mutexes[i], &mutex_attr);
+  }
    
-   int debug_wait = 0;
-   char hostname[256];
-   pid_t pid = getpid();
-   int pid_int = (int) pid;
-   gethostname(hostname, sizeof(hostname));
-   printf("PID %d on %s ready for attach\n", pid, hostname);
-   fflush(stdout);
-   //while (debug_wait == 0)
-   //   sleep(1);
-   //}
+  /*
+   * Initialize listener threads
+   */
+  //TODO
 
-
-   /*
-    * MPI CONFIG
-    */
-   int rc;
-   char processor_name[MPI_MAX_PROCESSOR_NAME];
-   int processor_name_length;
-   int required = MPI_THREAD_MULTIPLE;
-   int provided;
-   int claimed;
-
-   /*
-    * MPI Init with multiple thread support
-    */
-   //rc = MPI_Init_thread(&argc, &argv, required, &provided);
-   rc = MPI_Init_thread(NULL, NULL, required, &provided);
-   if (rc != MPI_SUCCESS) {
-      //TODO write MPI_Error_string on error
-      printf("ERROR: Error in MPI thread init\n");
-      exit(-1);
-   }
-
-   MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
-   MPI_Comm_rank(MPI_COMM_WORLD, &comm_rank);
-   rc = MPI_Get_processor_name(processor_name, &processor_name_length);
-   if (rc != MPI_SUCCESS) {
-      printf("ERROR: Node %d: Error in getting processor name\n", comm_rank);
-      exit(-1);
-   }
-   printf("Hello, number of tasks is '%d', my comm_rank is '%d', my processor is '%s'\
-      and required thread level is %d\n", comm_size, comm_rank, processor_name, required);
-
-   rc = MPI_Query_thread(&claimed);
-   if (rc != MPI_SUCCESS) {
-      printf("ERROR: Node %d: Error query thread\n", comm_rank);
-      exit(-1);
-   }
-   printf("Node %d: Query thread level '%d', level of threads provided '%d'\n", comm_rank, claimed, provided);
-
-   /*
-    * Init debug files
-    */
-   
-   struct stat st = {0};
-
-   if (stat("/tmp/distributed_queue", &st) == -1) {
-      mkdir("/tmp/distributed_queue", 0777);
-   }
-
-   char pid_str[8];
-   sprintf(pid_str, "%d", pid_int);
-
-   char filename_log_lb[50] = "/tmp/distributed_queue/log_debug_lb";
-   strcat(filename_log_lb, pid_str);
-   log_file_lb = fopen(filename_log_lb, "wb");
-   if (log_file_lb == NULL)
-      printf("ERROR: Failed to open debug file '%s'\n", filename_log_lb);
-   LOAD_BALANCE_LOG_DEBUG_TD("Load balancer log file opened\n");
-
-   char filename_log_qw[50] = "/tmp/distributed_queue/log_debug_qw";
-   strcat(filename_log_qw, pid_str);
-   log_file_qw = fopen(filename_log_qw, "wb");
-   if (log_file_qw == NULL)
-      printf("ERROR: Failed to open debug file '%s'\n", filename_log_qw);
-   QSIZE_WATCHER_LOG_DEBUG_TD("Qsize Watcher log file opened\n");
-
-   char filename_log_debug[50] = "/tmp/distributed_queue/log_debug";
-   strcat(filename_log_debug, pid_str);
-   log_file_debug = fopen(filename_log_debug, "wb");
-   if (log_file_debug == NULL)
-      printf("ERROR: Failed to open debug file '%s'\n", filename_log_debug);
-   LOG_DEBUG_TD((unsigned long) 0, "Debug log file opened\n");
-
-   /*
-    * Variables initialization
-    */
-
-   moved_items_log = 0;
-   load_balancer_call_count_watcher;
-   load_balancer_call_count_remove;
-   load_balancer_call_count_global;
-
-   global_balancing_enable = false; //enables or disables global balancing
-   last_rebalance_time = 0;
-   
-   /*
-    * ID of master node on start of program is 0 and is saved in master_id variable
-    */
-   master_id = 0;
-
-   /*
-    * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
-    */
-   
-   if (queue_count_arg == 0) 
-      queue_count = get_nprocs();
-   else 
-      queue_count = queue_count_arg;
-  
-   LOG_DEBUG_TD((unsigned long) 0, "Number of cpus by get_nprocs is : %d\nCreating %d queues\n", get_nprocs(), queue_count);
-   
-   queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
-   for (i = 0; i < queue_count; i++) {
-      queues[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
-   }
-   
-   /*
-    * Queue initialization
-    */
-   for (i = 0; i < queue_count; i++) {
-      queues[i]->head = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-      queues[i]->head->next = NULL;
-      queues[i]->tail = queues[i]->head;
-      queues[i]->divider = queues[i]->head;
-      atomic_init( &(queues[i]->a_qsize), 0 );
-   }   
-   LOG_DEBUG_TD((unsigned long) 0, "Queues initialized\n");
-   
-   /*
-    * Setup mutexes
-    */
-
-   int *oldstate = NULL;
-   int *oldtype = NULL;
-   pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, oldstate);
-   pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, oldtype);
-
-   pthread_attr_init(&attr);
-   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-   pthread_mutexattr_init(&mutex_attr);
-
-   /*
-    * For creating hash table with thread id mapping
-    */
-   pthread_mutex_init(&insertionTidMutex, &mutex_attr);
-   pthread_mutex_init(&removalTidMutex, &mutex_attr);
-
-   //pthread_condattr_init (attr)
-   pthread_cond_init (&load_balance_cond, NULL);
-   pthread_mutex_init(&load_balance_mutex, &mutex_attr);
-   pthread_mutex_init(&load_balance_global_mutex, &mutex_attr);
-   pthread_cond_init(&load_balance_global_cond, NULL);
-   pthread_mutex_init(&qsize_watcher_mutex, &mutex_attr);
-   load_balancing_t_running_flag = false;
-   qsize_watcher_t_running_flag = false;
-
-   add_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
-   rm_mutexes = (pthread_mutex_t*) malloc ( queue_count * sizeof(pthread_mutex_t) );
-   for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_init(&add_mutexes[i], &mutex_attr);
-      pthread_mutex_init(&rm_mutexes[i], &mutex_attr);
-   }
-   
-   /*
-    * Initialize listener threads
-    */
-
-   /*
-    * Global balance listener
-    */
-   if (global_balancing_enable) {
-      rc = pthread_create(&listener_global_balance_t, &attr, comm_listener_global_balance, NULL);
-      if (rc) {
-         printf("ERROR: (init) return code from pthread_create() on global balance listener is %d\n", rc);
-         exit(-1);
-      }
-   }
+  /*
+   * Global balance listener
+   */
+  global_balancing_enable = false; //enables or disables global balancing
+  last_rebalance_time = 0;
+  if (global_balancing_enable) {
+    rc = pthread_create(&listener_global_balance_t, &attr, comm_listener_global_balance, NULL);
+    if (rc) {
+       printf("ERROR: (init) return code from pthread_create() on global balance listener is %d\n", rc);
+       exit(-1);
+    }
+  }
    
    /*
     * Global size listener
@@ -567,6 +576,8 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
       thread_count = 2 * queue_count;
    
    LOG_DEBUG_TD((unsigned long) 0, "Thread count is %d\n", thread_count);
+   printf("THREAD_MAPPING: %d\n", thread_count);
+   printf("THREAD_COUNT: %d\n", thread_count);
    thread_to_queue_ratio = thread_count / queue_count;
 
    callback_threads = (pthread_t*) malloc (thread_count * sizeof(pthread_t));
@@ -590,28 +601,61 @@ void lockfree_queue_init_callback (void* (*callback)(void *args), void* argument
       
       rc = pthread_create(&callback_threads[i], &attr, callback, q_args_t[i]);
       if (rc) {
-         printf("ERROR: (init callback threads) return code from pthread_create() is %d\n", rc);
+         fprintf(stderr, "ERROR: (init callback threads) return code from pthread_create() is %d\n", rc);
          exit(-1);
       }
       
-      LOG_DEBUG_TD((unsigned long) 0, "Created thread with ID %ld\n", callback_threads[i]);
+      //LOG_DEBUG_TD((unsigned long) 0, "Created thread with ID %ld\n", callback_threads[i]);
    }
-   
-   LOG_DEBUG_TD((unsigned long) 0, "%d Threads to callbacks initialized\n", thread_count);
-   
-   /*
-    * Initialize load balancer
-    */
 
-   rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
-   if (rc) {
-      printf("ERROR: (init qsize_watcher) return code from pthread_create() is %d\n", rc);
-      exit(-1);
-   }
-   else {
-         LOG_DEBUG_TD((unsigned long) 0, "QSize watcher thread initialized\n");
-         qsize_watcher_t_running_flag = true;
-   }
+  /*
+   * Initialize qsize watcher
+   */
+
+  if ( local_lb_type == 0 ) {
+    local_threshold_static = local_lb_threshold_static;
+    global_threshold_static = global_lb_threshold_static;
+    threshold_type = 0;
+  }
+  if ( local_lb_type == 1 ) {
+    local_threshold_percent = local_lb_threshold_percent;
+    global_threshold_percent = global_lb_threshold_percent;
+    threshold_type = 1;
+  }
+  if ( local_lb_type == 2 ) {
+    threshold_type = 2;
+  }
+  else {
+    fprintf(stderr, "ERROR: Bad argument for local_lb_type");
+  }
+
+
+  qsize_watcher_t_enable = qw_thread_enable_arg;
+  if ( qsize_watcher_t_enable ) {
+    rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
+    if (rc) {
+       fprintf(stderr, "ERROR: (init qsize_watcher) return code from pthread_create() is %d\n", rc);
+       exit(-1);
+    }
+    else {
+       printf("QSIZE_THREAD: enabled\n");
+       LOG_DEBUG_TD((unsigned long) 0, "QSIZE_THREAD: enabled\n");
+       qsize_watcher_t_running_flag = true;
+    }
+  }
+  else { 
+    LOG_DEBUG_TD((unsigned long) 0, "QSIZE_THREAD: disabled\n");
+    printf("QSIZE_THREAD: disabled\n");
+  }
+
+  /*
+   * Init remove count nuller
+   */
+  rc = pthread_create(&remove_count_nuller_t, &attr, remove_count_nuller, NULL);
+  if (rc) {
+     fprintf(stderr, "ERROR: (init remove_count_nuller) return code from pthread_create() is %d\n", rc);
+     exit(-1);
+  }
 
 }
 
@@ -645,23 +689,24 @@ void lockfree_queue_free(void *queue_id) {
 void lockfree_queue_insert_item (void* val) {
 
    int tid = getInsertionTid();
-   struct ds_lockfree_queue *q = queues[ tid ]; //volatile?
+   struct ds_lockfree_queue *q = queues[ tid ];
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    if (item == NULL) {
-      printf("ERROR: Malloc failed in lockfree_queue_insert_item\n");
-      //LOG_DEBUG_TD((unsigned long) tid, "ERROR: Malloc failed\n");
+      //printf("ERROR: Malloc failed in lockfree_queue_insert_item\n");
+      fprintf(stderr, "ERROR: Malloc failed\n");
+      LOG_DEBUG_TD((unsigned long) tid, "ERROR: Malloc failed\n");
    }
    struct lockfree_queue_item *tmp;
    item->val = val;
-   item->next = NULL;   //TODO ?
+   item->next = NULL;
    pthread_mutex_lock(&add_mutexes[tid]);
    
    //set next and swap pointer to tail
    q->tail->next = item;
    
    //q-tail setting is critical section
-   q->tail = q->tail->next;   //use cmp_and_swp?
+   q->tail = q->tail->next;
    
    //increment Q size
    atomic_fetch_add( &(q->a_qsize), 1);
@@ -670,7 +715,7 @@ void lockfree_queue_insert_item (void* val) {
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
-      //free(tmp->val);
+      //free(tmp->val); //allocated in main - can not free here
       free(tmp);
    }
    
@@ -680,25 +725,26 @@ void lockfree_queue_insert_item (void* val) {
 void lockfree_queue_insert_item_by_tid (void *t, void* val) {
 
    unsigned long *tid = t;
-   struct ds_lockfree_queue *q = queues[ *tid ]; //volatile?
+   struct ds_lockfree_queue *q = queues[ *tid ];
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
 
    if (item == NULL) {
-      printf("ERROR: Malloc failed\n");
-      //LOG_DEBUG_TD(*tid, "ERROR: Malloc failed\n");
+      //printf("ERROR: Malloc failed\n");
+      fprintf(stderr, "ERROR: Malloc failed\n");
+      LOG_DEBUG_TD(*tid, "ERROR: Malloc failed\n");
    }
 
    struct lockfree_queue_item *tmp;
    item->val = val;
-   item->next = NULL;   //TODO ?
+   item->next = NULL;
    pthread_mutex_lock(&add_mutexes[*tid]);
    
    //set next and swap pointer to tail
    q->tail->next = item;
    
    //q-tail setting is critical section
-   q->tail = q->tail->next;   //use cmp_and_swp?
+   q->tail = q->tail->next;
    
    //increment Q size
    atomic_fetch_add( &(q->a_qsize), 1);
@@ -707,7 +753,6 @@ void lockfree_queue_insert_item_by_tid (void *t, void* val) {
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
-      //free(tmp->val);
       free(tmp);
    }
    
@@ -717,23 +762,24 @@ void lockfree_queue_insert_item_by_tid (void *t, void* val) {
 void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
 
    unsigned long *tid = t;
-   struct ds_lockfree_queue *q = queues[ *tid ]; //volatile?
+   struct ds_lockfree_queue *q = queues[ *tid ];
 
    struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    
    if (item == NULL) {
-      printf("ERROR: Malloc failed\n");
-      //LOG_DEBUG_TD(*tid, "Malloc failed\n");
+      //printf("ERROR: Malloc failed\n");
+      fprintf(stderr, "ERROR: Malloc failed\n");
+      LOG_DEBUG_TD(*tid, "Malloc failed\n");
    }
    struct lockfree_queue_item *tmp;
    item->val = val;
-   item->next = NULL;   //TODO ?
+   item->next = NULL;
    
    //set next and swap pointer to tail
    q->tail->next = item;
    
    //q-tail setting is critical section
-   q->tail = q->tail->next;   //use cmp_and_swp?
+   q->tail = q->tail->next;
    
    //increment Q size
    atomic_fetch_add( &(q->a_qsize), 1);
@@ -742,58 +788,70 @@ void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
-      //free(tmp->val);
       free(tmp);
    }
    
 }
 
 
-void lockfree_queue_insert_Nitems_by_tid (void** values, int item_count) {
+void lockfree_queue_insert_N_items (void** values, int item_count) {
+
+   //TODO TEST
 
    int tid = getInsertionTid();
-   volatile struct ds_lockfree_queue *q = queues[ tid ]; //volatile?
+
+   if ( item_count == 0 ) {
+      LOG_DEBUG_TD((unsigned long) tid, "Item count is 0\n");
+   }
+   if ( values == NULL ) {
+      LOG_DEBUG_TD((unsigned long) tid, "Pointer to values is NULL\n");
+   }
+
+   struct ds_lockfree_queue *q = queues[ tid ];
 
    struct lockfree_queue_item *item;
    struct lockfree_queue_item *item_tmp;
-   struct lockfree_queue_item *item_first_new;
-   struct lockfree_queue_item *tmp;
+   struct lockfree_queue_item *item_first;
 
    item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
    
    if (item == NULL) {
-      printf("ERROR: Malloc failed\n");
-      //LOG_DEBUG_TD((unsigned long) tid, "Malloc failed\n");
+      //printf("ERROR: Malloc failed\n");
+      fprintf(stderr, "ERROR: Malloc failed\n");
+      LOG_DEBUG_TD((unsigned long) tid, "Malloc failed\n");
+      return;
    }
+   item->val = values[0];
+   item_first = item;
 
-   //item->val = *values[0]; //TODO FIX -- TRY COMPILE
-   item_first_new = item;
    for (int i = 1; i < item_count; i++) {
       item_tmp = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-      if (item_tmp == NULL)
+      if (item_tmp == NULL) {
+         fprintf(stderr, "ERROR: Malloc failed\n");
          LOG_DEBUG_TD((unsigned long) tid, "Malloc failed\n");
+      }
       item_tmp->val = values[i];
       item->next = item_tmp;
       item = item->next;
    }
+   item->next = NULL;
    
    pthread_mutex_lock(&add_mutexes[tid]);
    
    //set next
-   q->tail->next = item_first_new;   
+   q->tail->next = item_first_new;
    
    //swap pointer to tail
-   //q-tail setting is critical section
-   q->tail = item;   //use cmp_and_swp?
+   q->tail = item;
    
    //increment Q size
    atomic_fetch_add( &(q->a_qsize), item_count);
    
-   //cleanup
+   //cleanup   
+   struct lockfree_queue_item *tmp;
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
-      //free(tmp->val);
       free(tmp);
    }
    
@@ -803,17 +861,7 @@ void lockfree_queue_insert_Nitems_by_tid (void** values, int item_count) {
 
 
 void* lockfree_queue_load_balancer(void* arg) {
-   
-   //TODO len premiestnit smernik na polozku, od ktorej je pocet potrebnych premiestnenych poloziek do druheho radu
 
-   pthread_self();
-   LOAD_BALANCE_LOG_DEBUG_TD("Load balance thread started successfuly\n");
-   //printf("QSIZE WATCHER: Load balance thread started successfuly\n");
-
-   pthread_mutex_lock(&load_balance_mutex);
-
-   LOCK_LOCAL_QUEUES();
-   
    /*
     * relocate data
     * count estimated size
@@ -821,29 +869,39 @@ void* lockfree_queue_load_balancer(void* arg) {
     * TODO strategy pattern
     * TODO dynamic threshold setting -> to qsize watcher
     */
+
+   struct timespec *tp_rt;
+   struct timespec *tp_proc;
+   struct timespec *tp_thr;
+   clock_gettime(CLOCK_REALTIME, tp_rt);
+   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc);
+   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
+   LOAD_BALANCE_LOG_DEBUG_TD("LB TIME START: Realtime- %lu.%lu seconds\nProcess Time- %lu.%lu seconds\nThread Time- %lu.%lu seconds\n", 
+      tp_rt->tv_sec, tp_rt->tv_nsec, tp_proc->tv_sec, tp_proc->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
+
+   pthread_mutex_lock(&load_balance_mutex);
+   LOCK_LOCAL_QUEUES();
    
    //Do not use function lockfree_queue_size_total_consistent(), because mutexes are already locked. 
-   unsigned int total = lockfree_queue_size_total();  
+   unsigned int total = lockfree_queue_size_total();
    unsigned int estimated_size = total / queue_count;
    
-   int *indexes = (int*) malloc (2 * sizeof(int)); //indexes for largest[0] and smallest[1] queue
+   int *indexes = (int*) malloc (2 * sizeof(int));
    unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
    if ( indexes == NULL ) {
       LOG_DEBUG_TD((unsigned long) 0, "ERROR: Malloc failed\n");
    }
    if ( q_sizes == NULL ) {
-
+      LOG_DEBUG_TD((unsigned long) 0, "ERROR: Malloc failed\n");
    }
    unsigned long items_to_send;
 
    //TODO update condition, relocate data (queue_count - 1) loops?
    for (int i = 0 ; i < queue_count; i++) {
       LOAD_BALANCE_LOG_DEBUG_TD("Load balance round %d\n", i);
-      //printf("Load balance round %d\n", i);
       for (int j = 0; j < queue_count; j++) {
          q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
          LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
-         //printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
       }
       
       indexes = find_max_min_element_index(q_sizes, queue_count);
@@ -853,8 +911,6 @@ void* lockfree_queue_load_balancer(void* arg) {
       else
          items_to_send = q_sizes[indexes[0]] - estimated_size;
 
-      //printf("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
-      //  indexes[1], q_sizes[indexes[1]], items_to_send);
       LOAD_BALANCE_LOG_DEBUG_TD("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
          indexes[1], q_sizes[indexes[1]], items_to_send);
 
@@ -864,7 +920,6 @@ void* lockfree_queue_load_balancer(void* arg) {
        */
       lockfree_queue_move_items(indexes[0], indexes[1], items_to_send);
 
-      //printf("LB: Sizes after load balance round %d\n", i);
       LOAD_BALANCE_LOG_DEBUG_TD("LB: Sizes after load balance round %d\n", i);
       
       if ( arg != NULL ) {
@@ -872,7 +927,6 @@ void* lockfree_queue_load_balancer(void* arg) {
          for (int j = 0; j < queue_count; j++) {
             q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
             LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
-            //printf("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
             qsize_history[j] = q_sizes[j];
          }
       }
@@ -880,18 +934,16 @@ void* lockfree_queue_load_balancer(void* arg) {
    
    free(indexes);
 
-   //unlock Qs
-   /*for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_unlock(&add_mutexes[*tids[i]]);
-      pthread_mutex_unlock(&rm_mutexes[*tids[i]]);
-   }*/
    UNLOCK_LOCAL_QUEUES();
-
    pthread_cond_broadcast(&load_balance_cond);
    load_balancing_t_running_flag = false;
    pthread_mutex_unlock(&load_balance_mutex);
-   LOAD_BALANCE_LOG_DEBUG_TD("Load balancing thread returning\n");
-   //printf("Load balancing thread returning\n");
+
+   clock_gettime(CLOCK_REALTIME, tp_rt);
+   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc);
+   LOAD_BALANCE_LOG_DEBUG_TD("LB TIME END: Realtime- %lu.%lu seconds\nProcess Time- %lu.%lu seconds\n", 
+      tp_rt->tv_sec, tp_rt->tv_nsec, tp_proc->tv_sec, tp_proc->tv_nsec);
+
    return NULL;
 }
 
@@ -909,7 +961,6 @@ void lockfree_queue_move_items(int q_id_src, int q_id_dest, unsigned long count)
    struct ds_lockfree_queue *q_dest = queues[ q_id_dest ];
 
    unsigned long q_size_src = atomic_load( &(q_src->a_qsize) );
-   //unsigned long q_size_dest = atomic_load( &(q_dest->a_qsize) );
 
    struct lockfree_queue_item *tmp_div;
    struct lockfree_queue_item *tmp_div_next;
@@ -933,62 +984,35 @@ void lockfree_queue_move_items(int q_id_src, int q_id_dest, unsigned long count)
       q_dest->tail = tmp_div;
    }
 
-   atomic_fetch_sub( &(q_src->a_qsize), count);
-   atomic_fetch_add( &(q_dest->a_qsize), count);
-   moved_items_log += count;
-   LOAD_BALANCE_LOG_DEBUG_TD("Moved items count = %ld\n", moved_items_log);
+   atomic_fetch_sub(&(q_src->a_qsize), count);
+   atomic_fetch_add(&(q_dest->a_qsize), count);
+   atomic_fetch_add(&moved_items_log), count);
+   LOAD_BALANCE_LOG_DEBUG_TD("Moved items count = %ld\n", atomic_load(&moved_items_log));
 
 }
 
 void* lockfree_queue_qsize_watcher() {
    
-   //TODO complete function, test
-   
-   unsigned long threshold = 20000;
    unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
    unsigned long total_qsize;
    unsigned long *qsize_history = NULL;
    
    bool balance_flag;
 
-   QSIZE_WATCHER_LOG_DEBUG_TD("Watching queues\n");
-   //printf("Watching queues\n");
+   QSIZE_WATCHER_LOG_DEBUG_TD("Qsize watcher started\n");
    
    while(1) {
-
-      //pthread_mutex_lock(&qsize_watcher_mutex);
-      //TODO pause variable for watcher to not waste processor time
       //Set variables to null values each loop
       total_qsize = 0;
       balance_flag = false;
       
       //Sleep(microseconds) for a while for less overhead
-      usleep(50000);
-
-      bool lbft = false;
+      usleep(20000);
 
       if (load_balancing_t_running_flag) {
-         lbft = true;
-      }
-      pthread_cond_wait(&load_balance_cond, &load_balance_mutex); //TODO May cause deadlock
-      pthread_mutex_unlock(&load_balance_mutex);
-      /*while(load_balancing_t_running_flag) {
-         ;
-      }*/
-      if (lbft) {
-         //printf("Load balancing ended in REMOVE, continuing in work\n");
-         QSIZE_WATCHER_LOG_DEBUG_TD("Load balancing ended in REMOVE, continuing in work\n");
+         QSIZE_WATCHER_LOG_DEBUG_TD("Load balancing ended in REMOVE, continuing in work\n"); 
       }
 
-      //Get qsizes (non-consistent)
-      //total_qsize = lockfree_queue_size_total();
-      for (int i = 0; i < queue_count; i++) {
-         q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
-         total_qsize += q_sizes[i];
-      }
-      //printf("QSIZE WATCHER: total qsize = %ld\n", total_qsize);
-      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: total qsize = %ld\n", total_qsize);
-      
       if ( qsize_history == NULL ) {
          /*
           * If we got no history of qsizes, make one and go to next iteration of watching
@@ -1001,33 +1025,74 @@ void* lockfree_queue_qsize_watcher() {
       }
       else {
 
+        for (int i = 0; i < queue_count; i++) {
+          q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
+          total_qsize += q_sizes[i];
+        }
+        QSIZE_WATCHER_LOG_DEBUG_TD("Total qsize = %ld\n", total_qsize);
+      
 
-
-         if (total_qsize == 0) {
-            continue;
-         }
-         /*
-          * Look if at least one of queue sizes fell under threshold after last check
-          */
-         for (int i = 0; i < queue_count; i++) {
-            if ( (q_sizes[i] < threshold) && (qsize_history[i] >= threshold) ) {
-               QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Q%ld REBALANCE:\n\
+        if (total_qsize == 0) {
+          continue;
+        }
+        
+        /*
+         * Look if at least one of queue sizes fell under threshold after last check
+         * According to argument threshold_type is chosen threshold deciding strategy
+         */
+        if ( threshold_type == 0 ) {
+          //Static threshold type
+          for (int i = 0; i < queue_count; i++) {
+            if ( (q_sizes[i] < local_threshold_static) && (qsize_history[i] >= local_threshold_static) ) {
+               QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld REBALANCE:\n\
                   Old Q%d size was %ld\n\
                   New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
-               //printf("QSIZE WATCHER: Q%ld REBALANCE:\n", *tids[i]);
-               //printf("Old Q%d size was %ld\n", i, qsize_history[i]);
-               //printf("New Q%d size is %ld\n", i, q_sizes[i]);
                balance_flag = true;
             }
             else {
-               QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Q%ld OK:\n\
+               QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld OK:\n\
                   Old Q%d size was %ld\n\
                   New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
-               //printf("QSIZE WATCHER: Q%ld OK:\n", *tids[i]);
-               //printf("Old Q%d size was %ld\n", i, qsize_history[i]);
-               //printf("New Q%d size is %ld\n", i, q_sizes[i]);
             }
-         }
+          }
+        }
+
+        if ( threshold_type == 1 ) {
+          //Percentage threshold type
+          unsigned long threshold = (total_qsize / 100) * local_threshold_percent;
+          for (int i = 0; i < queue_count; i++) {
+            if ( (q_sizes[i] < item_percentage) && (qsize_history[i] >= item_percentage) ) {
+               QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld REBALANCE:\n\
+                  Old Q%d size was %ld\n\
+                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
+               balance_flag = true;
+            }
+            else {
+               QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld OK:\n\
+                  Old Q%d size was %ld\n\
+                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
+            }
+          }
+        }
+
+        if ( threshold_type == 2 ) {
+          //Dynamic threshold type
+          unsigned long threshold = (atomic_load(&rm_count_last) / q_count) * len_s;
+          for (int i = 0; i < queue_count; i++) {
+            if ( (q_sizes[i] < threshold) && (qsize_history[i] >= threshold) ) {
+               QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld REBALANCE:\n\
+                  Old Q%d size was %ld\n\
+                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
+               balance_flag = true;
+            }
+            else {
+               QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld OK:\n\
+                  Old Q%d size was %ld\n\
+                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
+            }
+          }
+        }
+
       }
       
       //Write new qsize history
@@ -1035,24 +1100,27 @@ void* lockfree_queue_qsize_watcher() {
          qsize_history[i] = q_sizes[i];
 
       if (!balance_flag) {
-         //printf("QSIZE WATCHER: No need for rebalancing\n\n");
          continue;
       }
    
-      //printf("QSIZE WATCHER: Queues turned below threshold - starting load balancer thread.\n");
-      QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Queues turned below threshold\n");
+      QSIZE_WATCHER_LOG_DEBUG_TD("Queues turned below threshold\n");
       
       if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
+         
          load_balancing_t_running_flag = true;
-         QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Starting load balancer thread.\n");
+         atomic_fetch_add(&load_balancer_call_count_watcher, 1);
+         QSIZE_WATCHER_LOG_DEBUG_TD("Starting load balancer thread.\n");
+
          int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, qsize_history);
          if (rc) {
-            printf("ERROR: (in qsize watcher) return code from pthread_create() load_balancing_t is %d\n", rc);
-            exit(-1);
+            fprintf(stderr, "ERROR: (in qsize watcher) return code from pthread_create() load_balancing_t is %d\n", rc);
+            QSIZE_WATCHER_LOG_DEBUG_TD("ERROR: return code from pthread_create() load_balancing_t is %d\n", rc);
+            pthread_mutex_unlock(&load_balance_mutex);
+            continue;
          }
 
-         QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Waiting for load balance thread to finish\n");
-         //printf("QSIZE WATCHER: Waiting for load balance thread to finish\n");
+         QSIZE_WATCHER_LOG_DEBUG_TD("Waiting for load balance thread to finish\n");
+         
          /*
           * TODO Recommended to use cond_wait in while loop
           * https://computing.llnl.gov/tutorials/pthreads/#ConditionVariables
@@ -1062,16 +1130,12 @@ void* lockfree_queue_qsize_watcher() {
 
          QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Got signal from load balancer -> returning to work\n\
             QSIZE WATCHER: Qsize history after rebalance is:\n");
-         //printf("QSIZE WATCHER: Got signal from load balancer -> returning to work\n");
-         //printf("QSIZE WATCHER: Qsize history after rebalance is:\n");
          for (int i = 0; i < queue_count; i++) {
             QSIZE_WATCHER_LOG_DEBUG_TD("Q%d-%ld items\n", i, qsize_history[i]);
-            //printf("Q%d-%ld items\n", i, qsize_history[i]);
          }
       }
       else {
-         //printf("Load Balancer already running in remove\n");
-         QSIZE_WATCHER_LOG_DEBUG_TD("Load Balancer already running in remove\n");
+         QSIZE_WATCHER_LOG_DEBUG_TD("Load Balancer already running\n");
          continue;
       }
    }
@@ -1090,15 +1154,13 @@ void* lockfree_queue_remove_all_items () {
 void* lockfree_queue_remove_item (int timeout) {
 
    /*
-    * tid should be tid of inserting thread - 1
     * timeout is in microseconds
     */
 
    void* val = NULL;
    int tid = getRemovalTid();
    
-   //struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
-   struct ds_lockfree_queue *q = queues[ tid ]; //modulo ok?
+   struct ds_lockfree_queue *q = queues[ tid ];
    
 
    pthread_mutex_lock(&rm_mutexes[tid]);
@@ -1107,7 +1169,7 @@ void* lockfree_queue_remove_item (int timeout) {
    //if (timeout > 0)
    //   usleep(timeout);
 
-   if ( q->divider != q->tail ) {   //atomic reads?
+   if ( q->divider != q->tail ) {
       val = q->divider->next->val;
       q->divider = q->divider->next;
       atomic_fetch_sub( &(q->a_qsize), 1);
@@ -1115,10 +1177,6 @@ void* lockfree_queue_remove_item (int timeout) {
    else {
       pthread_mutex_unlock(&rm_mutexes[tid]);
       while(1) {
-         /*
-          * pthread_mutex_trylock returns 0 if lock is acquired
-          */
-         
          pthread_mutex_lock(&rm_mutexes[tid]);
          if ( q->divider != q->tail ) {   //atomic reads?
             val = q->divider->next->val;
@@ -1147,7 +1205,9 @@ void* lockfree_queue_remove_item (int timeout) {
             if (!global_balancing_enable) {
                break;
             }
-            else {         
+            else {
+               atomic_fetch_add(&load_balancer_call_count_global, 1);
+
                short buf;
                MPI_Status status;
                short code_800 = 800;
@@ -1175,68 +1235,50 @@ void* lockfree_queue_remove_item (int timeout) {
                      break;
                   }
                } 
-               else { 
+               else {
                   //other local_structures are empty
                   break;
                }
             }
          }
+         else {
+            //pthread_mutex_trylock returns 0 if lock is acquired
+            if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
+               load_balancing_t_running_flag = true;
+               atomic_fetch_add(&load_balancer_call_count_remove, 1);
 
-         if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
-            
-            load_balancing_t_running_flag = true;
-            int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, NULL);
-            if (rc) {
-               printf("ERROR: (remove item) return code from pthread_create() of load_balancing_t is %d\n", rc);
-               exit(-1);
+               int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, NULL);
+               if (rc) {
+                  printf("ERROR: (remove item) return code from pthread_create() of load_balancing_t is %d\n", rc);
+                  exit(-1);
+               }
+               else {
+                  //Rm mutex for this thread must be unlocked. May cause harm in other parts of code... 
+                  pthread_mutex_unlock(&rm_mutexes[tid]);
+                  pthread_cond_wait(&load_balance_cond, &load_balance_mutex);
+                  pthread_mutex_unlock(&load_balance_mutex);
+               }
             }
             else {
-               //QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Waiting for load balance thread to finish\n");
-               //printf("REMOVE T%d: Waiting for load balance thread to finish\n", tid);
-               /*
-                * TODO Recommended to use cond_wait in while loop
-                * https://computing.llnl.gov/tutorials/pthreads/#ConditionVariables
-                */
-
-               //TODO rm mutex for this thread must be unlocked
-               //may cause harm in other parts of code... 
                pthread_mutex_unlock(&rm_mutexes[tid]);
-               pthread_cond_wait(&load_balance_cond, &load_balance_mutex);
-               pthread_mutex_unlock(&load_balance_mutex);
-            }
-         }
-         else {
-            pthread_mutex_unlock(&rm_mutexes[tid]);
-            if (load_balancing_t_running_flag == true) {
-               continue;
+               usleep(100);   //TODO timer
             }
          }
       }
    }
    
    pthread_mutex_unlock(&rm_mutexes[tid]);
+   atomic_fetch_add(&rm_count, 1);
    return val;
    
 }
 
 void* lockfree_queue_remove_item_by_tid (void* t, int timeout) {
 
-   /*
-    * tid should be tid of inserting thread - 1
-    * timeout is in microseconds
-    */
-
    void* val = NULL;
    long* tid = t;
-
-   if ( lockfree_queue_is_empty_local (tid) ) {
-      //printf("Queue %ld is empty\n", *t);
-      return val;
-   }
    
-   //struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
-   struct ds_lockfree_queue *q = queues[ *tid ]; //modulo ok?
-   
+   struct ds_lockfree_queue *q = queues[ *tid ]; 
 
    pthread_mutex_lock(&rm_mutexes[*tid]);
    
@@ -1244,14 +1286,14 @@ void* lockfree_queue_remove_item_by_tid (void* t, int timeout) {
    //if (timeout > 0)
    //   usleep(timeout);
    
-   if ( q->divider != q->tail ) {   //atomic reads?
+   if ( q->divider != q->tail ) {
       val = q->divider->next->val;
       q->divider = q->divider->next;
       atomic_fetch_sub( &(q->a_qsize), 1);
    }
    else {
-      //TODO check other queues and relocate data to queues to be same sized
-      //Or set special variable which signalize which Q was empty and wanted to get item to 1
+      //TODO
+      ;
    }
    
    pthread_mutex_unlock(&rm_mutexes[*tid]);
@@ -1261,42 +1303,30 @@ void* lockfree_queue_remove_item_by_tid (void* t, int timeout) {
 
 void* lockfree_queue_remove_item_by_tid_no_lock (void* t, int timeout) {
 
-   /*
-    * tid should be tid of inserting thread - 1
-    * timeout is in microseconds
-    */
-
    void* val = NULL;
    long* tid = t;
 
-   if ( lockfree_queue_is_empty_local(tid) ) {
-      //printf("Queue %ld is empty\n", *t);
-      return val;
-   }
-   
-   //struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
-   struct ds_lockfree_queue *q = queues[ *tid ]; //modulo ok?
+   struct ds_lockfree_queue *q = queues[ *tid ];
    
    //TODO timeout spin
    //if (timeout > 0)
    //   usleep(timeout);
    
-   if ( q->divider != q->tail ) {   //atomic reads?
+   if ( q->divider != q->tail ) {
       val = q->divider->next->val;
       q->divider = q->divider->next;
       atomic_fetch_sub( &(q->a_qsize), 1);
    }
    else {
-      //TODO check other queues and relocate data to queues to be same sized
-      //Or set special variable which signalize which Q was empty and wanted to get item to 1
+      //TODO
+      ;
    }
    
    return val;
-   
 }
 
 
-void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
+void** lockfree_queue_remove_Nitems (unsigned long N, int timeout) {
    
    /*
     * N is amount of items to be taken from Q
@@ -1307,8 +1337,7 @@ void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
    if (val_arr == NULL)
       LOG_DEBUG_TD((unsigned long) tid, "Malloc failed\n");
    
-   //volatile struct ds_lockfree_queue *q = queues[*t % queue_count]; //modulo ok?
-   volatile struct ds_lockfree_queue *q = queues[ tid ]; //modulo ok?
+   volatile struct ds_lockfree_queue *q = queues[ tid ];
    
    pthread_mutex_lock(&rm_mutexes[tid]);
    
@@ -1321,7 +1350,7 @@ void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
    
    unsigned long i = 0;
    for (i = 0; i < N; i++) {
-      if ( q->divider != q->tail ) {   //atomic reads?
+      if ( q->divider != q->tail ) {
          val_arr[i] = q->divider->next->val;
          q->divider = q->divider->next;
       }
@@ -1337,9 +1366,7 @@ void** lockfree_queue_remove_Nitems_by_tid (unsigned long N, int timeout) {
    }
    
    atomic_fetch_sub( &(q->a_qsize), N);
-   
    pthread_mutex_unlock(&rm_mutexes[tid]);
-   
    return val_arr;
    
 }
@@ -1376,6 +1403,15 @@ unsigned long global_size() {
     * master counts the sum and returns it to user(903)
     * master goes to barrier and unlock all nodes
     */
+   struct timespec *tp_rt;
+   struct timespec *tp_proc;
+   struct timespec *tp_thr;
+   clock_gettime(CLOCK_REALTIME, tp_rt);
+   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc);
+   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
+   LOAD_BALANCE_LOG_DEBUG_TD("GET GLOBAL SIZE START: Realtime- %lu.%lu seconds\nProcess Time- %lu.%lu seconds\nThread Time- %lu.%lu seconds\n", 
+      tp_rt->tv_sec, tp_rt->tv_nsec, tp_proc->tv_sec, tp_proc->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
+
 
    unsigned long global_size = 0;
    short code_900 = 900;
@@ -1383,13 +1419,22 @@ unsigned long global_size() {
 
    MPI_Status status;
    MPI_Recv(&global_size, 1, MPI_UNSIGNED_LONG, master_id, 903, MPI_COMM_WORLD, &status);
+   
    printf("NODE %d: Global structure size is %ld\n", comm_rank, global_size);
+   LOG_DEBUG_TD((unsigned long) pthread_self(), "NODE %d: Global structure size is %ld\n", comm_rank, global_size);
+   clock_gettime(CLOCK_REALTIME, tp_rt);
+   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc);
+   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
+   LOAD_BALANCE_LOG_DEBUG_TD("GET GLOBAL SIZE END: Realtime- %lu.%lu seconds\nProcess Time- %lu.%lu seconds\nThread Time- %lu.%lu seconds\n", 
+      tp_rt->tv_sec, tp_rt->tv_nsec, tp_proc->tv_sec, tp_proc->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);   
+
    return global_size;
    
 }
 
 //void* control_message_listener() {
    //TODO can be used as listener to every message and deciding what to do after that message is received
+   //can be implemented using ANY_SOURCE and MPI_ANY_TAG
 //}
 void* comm_listener_global_size() {
 
@@ -1480,12 +1525,12 @@ void* comm_listener_global_size() {
             LOCK_LOAD_BALANCER();
             LOCK_LOCAL_QUEUES();
             //TODO lock load balancer + watcher thread
-            //TODO UNLOCK LOAD BALANCER?
 
             unsigned long local_size = lockfree_queue_size_total();
             MPI_Send(&local_size, 1, MPI_UNSIGNED_LONG, master_id, 902, MPI_COMM_WORLD);
 
             MPI_Barrier(MPI_COMM_WORLD);
+            UNLOCK_LOAD_BALANCER();
             UNLOCK_LOCAL_QUEUES();
          }
       }
@@ -1525,50 +1570,28 @@ unsigned long lockfree_queue_size_total_consistent () {
 
    unsigned long size = 0;
    
-   //Lock mutexes for adding and removing threads
-   /*for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_lock(&add_mutexes[i]);
-      pthread_mutex_lock(&rm_mutexes[i]);
-   }*/
    LOCK_LOCAL_QUEUES();
 
    for (int i = 0; i < queue_count; i++) {
       size += atomic_load( &(queues[i]->a_qsize) );
    }
 
-   /*for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_unlock(&add_mutexes[i]);
-      pthread_mutex_unlock(&rm_mutexes[i]);
-   }*/
    UNLOCK_LOCAL_QUEUES();
-
    return size;
-   
 }
 
 unsigned long* lockfree_queue_size_total_consistent_allarr () {
 
    unsigned long* sizes = (unsigned long*) malloc(queue_count * sizeof(unsigned long));
-   
-   //Lock mutexes for adding and removing threads
-   /*for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_lock(&add_mutexes[i]);
-      pthread_mutex_lock(&rm_mutexes[i]);
-   }*/
+
    LOCK_LOCAL_QUEUES();
 
    for (int i = 0; i < queue_count; i++) {
       sizes[i] = atomic_load( &(queues[i]->a_qsize) );
    }
 
-   /*for (int i = 0; i < queue_count; i++) {
-      pthread_mutex_unlock(&add_mutexes[i]);
-      pthread_mutex_unlock(&rm_mutexes[i]);
-   }*/
    UNLOCK_LOCAL_QUEUES();
-
    return sizes;
-   
 }
 
 bool lockfree_queue_same_size() {
@@ -1584,12 +1607,15 @@ bool lockfree_queue_same_size() {
    }
    
    return true;
-   
 }
 
 void lockfree_queue_stop_watcher() {
 
    pthread_cancel(qsize_watcher_t);
+   printf("STATISTICS: qsize watcher was called %lux\nLoad balance was called from remove %lux\n\
+      Global balance was initiated %lux\nLocal balance moved %lu items\n", atomic_load(&load_balancer_call_count_watcher),
+      atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), 
+      atomic_load(&moved_items_log));
    //if ( pthread_cancel(listener_global_size_t) != 0 )
    //   printf("Pthread cancel on listener_global_size_t failed\n");
    //pthread_cancel(listener_global_balance_t);
@@ -1598,19 +1624,11 @@ void lockfree_queue_stop_watcher() {
 }
 
 int* find_max_min_element_index(unsigned long *array, unsigned long len) {
-   
-   /*
-    * TODO can find max min, save to array ordered from max to min with values and then after relocation
-    * only update values which were relocated and update positions if they changed
-    */
 
     /*
      * index_max_min[0] is index of element with max number
      * index_max_min[1] is index of element with min number
      */
-
-     //apply strategy pattern to sorting
-   
    
    unsigned long *arr_max_min = (unsigned long*) malloc ( 2 * sizeof(unsigned long));
    arr_max_min[0] = 0;
@@ -1637,4 +1655,14 @@ int* find_max_min_element_index(unsigned long *array, unsigned long len) {
    free(arr_max_min);
    return index_max_min;
    
+}
+
+void* remove_count_nuller() {
+
+  while(1) {
+    sleep(1);
+    atomic_store(&rm_count_last, atomic_load(&rm_count));
+    atomic_store(&rm_count, 0);
+  }
+
 }
