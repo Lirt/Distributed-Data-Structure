@@ -7,7 +7,6 @@
    #include <stdbool.h>
 #endif
 
-
 //TODO REMOVE WHEN IT WILL NOT BE NEEDED
 struct q_args {
    void* args;
