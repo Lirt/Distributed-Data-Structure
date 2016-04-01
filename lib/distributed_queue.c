@@ -484,7 +484,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
   printf("CPU_COUNT: %d\nQUEUE_COUNT: %d\n", get_nprocs(), queue_count);
 
   queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
-  for (i = 0; i < queue_count; i++) {
+  for (int i = 0; i < queue_count; i++) {
     queues[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
   }
 
