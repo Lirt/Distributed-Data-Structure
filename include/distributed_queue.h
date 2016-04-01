@@ -63,19 +63,22 @@ extern long **tids;
 
 //TODO TEST
 #define LOCK_LOCAL_QUEUES() \
-   for (int it = 0; it < queue_count; it++) { \
-      pthread_mutex_lock(&add_mutexes[*tids[it]]); \
-      pthread_mutex_lock(&rm_mutexes[*tids[it]]); \
-   }
+  for (int it = 0; it < queue_count; it++) { \
+    pthread_mutex_lock(&add_mutexes[*tids[it]]); \
+    pthread_mutex_lock(&rm_mutexes[*tids[it]]); \
+  }
 
 #define UNLOCK_LOCAL_QUEUES() \
-   for (int it = 0; it < queue_count; it++) { \
-      pthread_mutex_unlock(&add_mutexes[*tids[it]]); \
-      pthread_mutex_unlock(&rm_mutexes[*tids[it]]); \
-   }
+  for (int it = 0; it < queue_count; it++) { \
+    pthread_mutex_unlock(&add_mutexes[*tids[it]]); \
+    pthread_mutex_unlock(&rm_mutexes[*tids[it]]); \
+  }
 
 #define LOCK_LOAD_BALANCER() \
-   pthread_mutex_lock(&load_balance_mutex);
+  pthread_mutex_lock(&load_balance_mutex);
+
+#define UNLOCK_LOAD_BALANCER() \
+  pthread_mutex_unlock(&load_balance_mutex);
    
 //pthread_mutex_lock(&qsize_watcher_mutex);
 
@@ -101,7 +104,7 @@ extern void lockfree_queue_insert_item_by_tid_no_lock(void *tid, void *val);
 extern void* lockfree_queue_load_balancer();
 extern void lockfree_queue_move_items(int q_id_from, int q_id_to, unsigned long count);
 extern unsigned long lockfree_queue_size_by_tid(void *tid);
-//extern unsigned long lockfree_queue_size_total(void);
+extern unsigned long lockfree_queue_size_total(void);
 extern unsigned long* lockfree_queue_size_total_consistent_allarr(void);
 extern void* lockfree_queue_qsize_watcher();
 //extern void lockfree_queue_stop_watcher(void);
@@ -112,6 +115,7 @@ extern void* lockfree_queue_remove_all_items();
 extern void* comm_listener_global_balance();
 extern void* comm_listener_global_size();
 
+extern void* remove_count_nuller();
 extern int  getInsertionTid();
 extern int  getRemovalTid();
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);
