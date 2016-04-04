@@ -447,7 +447,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
 
 
   //printf("-----------CONFIGURATION-----------\nPID: %d\nNode: %s\n", pid, hostname);
-  LOG_DEBUG_TD( (long) -1, "-----------CONFIGURATION-----------\nPID: %d\nNode: %s\n", pid, hostname);
+  LOG_INFO_TD("-----------CONFIGURATION-----------\nPID: %d\nNode: %s\n", pid, hostname);
 
   /*
    * MPI CONFIG
@@ -465,8 +465,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
   //rc = MPI_Init_thread(&argc, &argv, required, &provided);
   rc = MPI_Init_thread(NULL, NULL, required, &provided);
   if (rc != MPI_SUCCESS) {
-    //TODO write MPI_Error_string on error
-    fprintf(stderr, "ERROR: Error in MPI thread init\n");
+    LOG_ERR_T( (long) -1, "Error in MPI thread init\n");
     exit(-1);
   }
 
@@ -479,7 +478,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
     exit(-1);
   }
   //printf("Task_count: %d\nCOMM_RANK: %d\nProcessor_name: '%s'\nRequired_thread_level: %d\n", comm_size, comm_rank, processor_name, required);
-  LOG_DEBUG_TD( (long) -1, "Task_count: %d\nCOMM_RANK: %d\nProcessor_name: '%s'\nRequired_thread_level: %d\n", 
+  LOG_INFO_TD("Task_count: %d\nCOMM_RANK: %d\nProcessor_name: '%s'\nRequired_thread_level: %d\n", 
     comm_size, comm_rank, processor_name, required);
 
   rc = MPI_Query_thread(&claimed);
@@ -489,7 +488,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
     exit(-1);
   }
   //printf("Provided_thread_level: %d\n", provided);
-  LOG_DEBUG_TD( (long) -1, "Provided_thread_level: %d\n", provided);
+  LOG_INFO_TD("Provided_thread_level: %d\n", provided);
 
   /*
    * Variables initialization
@@ -518,7 +517,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
 
   //LOG_DEBUG_TD( (long)) -1, "Number of cpus by get_nprocs is : %d\nCreating %d queues\n", get_nprocs(), queue_count);
   //printf("CPU_COUNT: %d\nQUEUE_COUNT: %d\n", get_nprocs(), queue_count);
-  LOG_DEBUG_TD( (long) -1, "CPU_COUNT: %d\nQUEUE_COUNT: %d\n", get_nprocs(), queue_count);
+  LOG_INFO_TD("CPU_COUNT: %d\nQUEUE_COUNT: %d\n", get_nprocs(), queue_count);
 
   queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
   for (int i = 0; i < queue_count; i++) {
@@ -617,8 +616,8 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
    //LOG_DEBUG_TD( (long) -1, "Thread count is %d\n", thread_count);
    //printf("THREAD_MAPPING: %d\n", thread_count);
    //printf("THREAD_COUNT: %d\n", thread_count);
-   LOG_DEBUG_TD( (long) -1, "THREAD_MAPPING: %d\n", thread_count);
-   LOG_DEBUG_TD( (long) -1, "THREAD_COUNT: %d\n", thread_count);
+   LOG_INFO_TD("THREAD_MAPPING: %d\n", thread_count);
+   LOG_INFO_TD("THREAD_COUNT: %d\n", thread_count);
    thread_to_queue_ratio = thread_count / queue_count;
 
    callback_threads = (pthread_t*) malloc (thread_count * sizeof(pthread_t));
@@ -659,18 +658,18 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
     }
     else {
        //printf("QSIZE_THREAD: enabled\n");
-       LOG_DEBUG_TD( (long) -1, "QSIZE_THREAD: enabled\n");
+       LOG_INFO_TD("QSIZE_THREAD: enabled\n");
        qsize_watcher_t_running_flag = true;
     }
   }
   else { 
-    LOG_DEBUG_TD( (long) -1, "QSIZE_THREAD: disabled\n");
+    LOG_INFO_TD("QSIZE_THREAD: disabled\n");
     //printf("QSIZE_THREAD: disabled\n");
   }
 
 
    //printf("-----------CONFIGURATION-----------\n");
-  LOG_DEBUG_TD( (long) -1, "-----------CONFIGURATION-----------\n");
+  LOG_INFO_TD("-----------CONFIGURATION-----------\n");
 
    /*
     * Settings for queue argument structure and thread mapping to queues
@@ -921,7 +920,6 @@ void* lockfree_queue_load_balancer(void* arg) {
   LOCK_LOCAL_QUEUES();
 
   #ifdef COUNTERS
-  #ifdef DEBUG
     struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
     struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
     struct timespec *tp_proc_start = (struct timespec*) malloc (sizeof (struct timespec));
@@ -929,12 +927,10 @@ void* lockfree_queue_load_balancer(void* arg) {
     struct timespec *tp_thr = (struct timespec*) malloc (sizeof (struct timespec));
     clock_gettime(CLOCK_REALTIME, tp_rt_start);
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_start);
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
-
-    LOAD_BALANCE_LOG_DEBUG_TD("LB TIME START: \n\tRealtime - %lu.%lu seconds\n\tProcess Time- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
-      tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);    
   #endif
-  #endif
+  LOAD_BALANCE_LOG_DEBUG_TD("LB TIME START: \n\tRealtime - %lu.%lu seconds\n\tProcess Time- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
+    tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
 
   //Do not use function lockfree_queue_size_total_consistent(), because mutexes are already locked. 
   unsigned int total = lockfree_queue_size_total();
@@ -952,14 +948,10 @@ void* lockfree_queue_load_balancer(void* arg) {
 
   //TODO update condition, relocate data (queue_count - 1) loops?
   for (int i = 0 ; i < queue_count; i++) {
-    #ifdef DEBUG
-      LOAD_BALANCE_LOG_DEBUG_TD("Load balance round %d\n", i);
-    #endif
+    LOAD_BALANCE_LOG_DEBUG_TD("Load balance round %d\n", i);
     for (int j = 0; j < queue_count; j++) {
       q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
-      #ifdef DEBUG
-        LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
-      #endif
+      LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
     }
     
     indexes = find_max_min_element_index(q_sizes, queue_count);
@@ -969,10 +961,8 @@ void* lockfree_queue_load_balancer(void* arg) {
     else
        items_to_send = q_sizes[indexes[0]] - estimated_size;
 
-    #ifdef DEBUG
-      LOAD_BALANCE_LOG_DEBUG_TD("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
-        indexes[1], q_sizes[indexes[1]], items_to_send);
-    #endif
+    LOAD_BALANCE_LOG_DEBUG_TD("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: %lu items\n", indexes[0], q_sizes[indexes[0]], 
+      indexes[1], q_sizes[indexes[1]], items_to_send);
 
     /*
      * remove N items from queue queues[indexes[0]] (queue with more items)
@@ -980,19 +970,14 @@ void* lockfree_queue_load_balancer(void* arg) {
      */
     lockfree_queue_move_items(indexes[0], indexes[1], items_to_send);
 
-    #ifdef DEBUG
-      LOAD_BALANCE_LOG_DEBUG_TD("LB: Sizes after load balance round %d\n", i);
-    #endif
-    
+    LOAD_BALANCE_LOG_DEBUG_TD("LB: Sizes after load balance round %d\n", i);
   }
 
   if ( arg != NULL ) {
     unsigned long* qsize_history = arg;
     for (int j = 0; j < queue_count; j++) {
       q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
-      #ifdef DEBUG
-        LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
-      #endif
+      LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
       qsize_history[j] = q_sizes[j];
     }
   }
@@ -1005,18 +990,16 @@ void* lockfree_queue_load_balancer(void* arg) {
   pthread_mutex_unlock(&load_balance_mutex);
 
   #ifdef COUNTERS
-  #ifdef DEBUG
     clock_gettime(CLOCK_REALTIME, tp_rt_end);
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_end);
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
-    LOAD_BALANCE_LOG_DEBUG_TD("LB TIME END: \n\tRealtime - %lu.%lu seconds\n\tProcess Time- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
-      tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_proc_end->tv_sec, tp_proc_end->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
-    LOAD_BALANCE_LOG_DEBUG_TD("Final realtime local LB time = '%lu.%lu'\n", 
-      time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
-    LOAD_BALANCE_LOG_DEBUG_TD("Final process local LB time = '%lu.%lu'\n", 
-      time_diff_dds(tp_proc_start, tp_proc_end)->tv_sec, time_diff_dds(tp_proc_start, tp_proc_end)->tv_nsec );
   #endif
-  #endif
+  LOAD_BALANCE_LOG_DEBUG_TD("LB TIME END: \n\tRealtime - %lu.%lu seconds\n\tProcess Time- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
+    tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_proc_end->tv_sec, tp_proc_end->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
+  LOAD_BALANCE_LOG_DEBUG_TD("Final realtime local LB time = '%lu.%lu'\n", 
+    time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
+  LOAD_BALANCE_LOG_DEBUG_TD("Final process local LB time = '%lu.%lu'\n", 
+    time_diff_dds(tp_proc_start, tp_proc_end)->tv_sec, time_diff_dds(tp_proc_start, tp_proc_end)->tv_nsec );
 
   return NULL;
 
@@ -1062,10 +1045,8 @@ void lockfree_queue_move_items(int q_id_src, int q_id_dest, unsigned long count)
 
     atomic_fetch_sub(&(q_src->a_qsize), count);
     atomic_fetch_add(&(q_dest->a_qsize), count);
-  #ifdef COUNTERS
     atomic_fetch_add(&moved_items_log, count);
     LOAD_BALANCE_LOG_DEBUG_TD("Moved items count = %ld\n", atomic_load(&moved_items_log));
-  #endif
 
 }
 
@@ -1091,11 +1072,11 @@ void* lockfree_queue_qsize_watcher() {
         return NULL;
       }
 
-      #ifdef DEBUG
+      /*#ifdef DEBUG
         if (load_balancing_t_running_flag) {
           QSIZE_WATCHER_LOG_DEBUG_TD("Load balancing ended in REMOVE, continuing in work\n"); 
         }
-      #endif
+      #endif*/
 
       if ( qsize_history == NULL ) {
          /*
@@ -1113,9 +1094,7 @@ void* lockfree_queue_qsize_watcher() {
           q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
           total_qsize += q_sizes[i];
         }
-        #ifdef DEBUG
-          QSIZE_WATCHER_LOG_DEBUG_TD("Total qsize = %ld\n", total_qsize);
-        #endif
+        QSIZE_WATCHER_LOG_DEBUG_TD("Total qsize = %ld\n", total_qsize);
       
         if (total_qsize == 0) {
           continue;
@@ -1129,19 +1108,15 @@ void* lockfree_queue_qsize_watcher() {
           //Static threshold type
           for (int i = 0; i < queue_count; i++) {
             if ( (q_sizes[i] < local_threshold_static) && (qsize_history[i] >= local_threshold_static) ) {
-              #ifdef DEBUG
-                QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld REBALANCE:\n\
-                  Old Q%d size was %ld\n\
-                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
-              #endif
+              QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld REBALANCE:\n\
+                Old Q%d size was %ld\n\
+                New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
               balance_flag = true;
             }
             else {
-              #ifdef DEBUG
-               QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld OK:\n\
-                  Old Q%d size was %ld\n\
-                  New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
-              #endif
+              QSIZE_WATCHER_LOG_DEBUG_TD("Q%ld OK:\n\
+                Old Q%d size was %ld\n\
+                New Q%d size is %ld\n", *tids[i], i, qsize_history[i], i, q_sizes[i]);
             }
           }
         }
@@ -1729,7 +1704,12 @@ void lockfree_queue_stop_watcher() {
     atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), 
     atomic_load(&moved_items_log));*/
 
-  LOG_DEBUG_TD( (long) -1, "STATISTICS: \n\tQsize watcher was called %lu times\n\tLoad balance was called from remove %lu times\
+  /*LOG_DEBUG_TD( (long) -1, "STATISTICS: \n\tQsize watcher was called %lu times\n\tLoad balance was called from remove %lu times\
+    \n\tGlobal balance was initiated %lu times\n\tLocal balance moved %lu items\n", atomic_load(&load_balancer_call_count_watcher),
+    atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), 
+    atomic_load(&moved_items_log));*/
+
+  LOG_INFO_TD("STATISTICS: \n\tQsize watcher was called %lu times\n\tLoad balance was called from remove %lu times\
     \n\tGlobal balance was initiated %lu times\n\tLocal balance moved %lu items\n", atomic_load(&load_balancer_call_count_watcher),
     atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), 
     atomic_load(&moved_items_log));

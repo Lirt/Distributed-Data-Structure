@@ -351,19 +351,24 @@ void *work(void *arg_struct) {
                         time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
                      LOG_DEBUG_TD(*tid, "Final process time = '%lu.%lu'\n", 
                         time_diff(tp_proc_start, tp_proc_end)->tv_sec, time_diff(tp_proc_start, tp_proc_end)->tv_nsec );
+                     
+                     LOG_INFO_TD("Total removed items %lu\n", atomic_load(&total_removes));
+                     LOG_INFO_TD("Final realtime program time = '%lu.%lu'\n", 
+                        time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
+                     LOG_INFO_TD("Final process time = '%lu.%lu'\n", 
+                        time_diff(tp_proc_start, tp_proc_end)->tv_sec, time_diff(tp_proc_start, tp_proc_end)->tv_nsec );
                      //printf("\tT[%ld]: Total sum is %lu\n", *tid, atomic_load(&total_sum_rm));
                      //printf("\tT[%ld]: Total inserted items %lu\n", *tid, atomic_load(&total_inserts));
                      //printf("\tT[%ld]: Total removed items %lu\n", *tid, atomic_load(&total_removes));
                      //printf("\tT[%ld]: Final program time = '%lu.%lu'\n", *tid, 
                      //   (tp_rt_end->tv_sec - startTimeTimespecSec), (tp_rt_end->tv_nsec - startTimeTimespecNSec) );
                   }
-   
+
                   fclose(work_file_ins);
                   fclose(work_file_rm);
 
                   //lockfree_queue_destroy();
                   //TODO Pthread Cleanup and destroy method
-                  printf("tid / 2 = %ld\n", *tid / 2);
                   if ( (long) (*tid / 2) == 0 ) {
                      LOG_DEBUG_TD(*tid, "Stopping watcher\n");
                      //printf("Thread[%ld]: Stopping watcher\n", *tid);

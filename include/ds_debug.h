@@ -72,4 +72,19 @@ extern FILE *log_file_lb;
 
 #define LOG_INFO(MESSAGE, ...) fprintf(log_file_debug, "[INFO]: (%s)\n", MESSAGE, ##__VA_ARGS__) 
 
+#define LOG_INFO_TD(MESSAGE, ...) \
+	fprintf(log_file_debug, "[INFO]: "); \
+	fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__)
 
+
+#define LOAD_BALANCE_LOG_INFO_TD(MESSAGE, ...) \
+	fprintf(log_file_lb, "[LB INFO]: "); \
+	fprintf(log_file_lb, MESSAGE, ##__VA_ARGS__)
+
+#define QSIZE_WATCHER_LOG_INFO_TD(MESSAGE, ...) \
+	fprintf(log_file_qw, "[QW INFO]: "); \
+	fprintf(log_file_qw, MESSAGE, ##__VA_ARGS__)
+	
+#define GLOBAL_COMM_LOG_INFO_TD(RANK, MESSAGE, ...) \
+	fprintf(log_file_global_comm, "[GC INFO]: RANK[%d]: ", RANK); \
+	fprintf(log_file_global_comm, MESSAGE, ##__VA_ARGS__)
