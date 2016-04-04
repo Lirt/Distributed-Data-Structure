@@ -33,6 +33,7 @@ extern void* lockfree_queue_remove_item(int timeout);
  * TESTING PURPOSES
  * //TODO MOVE TO PROGRAMMERS API AFTER TESTS ARE FINISHED
  */
+
 extern void lockfree_queue_stop_watcher(void);
 extern unsigned long lockfree_queue_size_total_consistent(void);
 

@@ -1,4 +1,9 @@
 
+#ifndef TIME_H
+   #define TIME_H
+   #include <time.h>
+#endif 
+
 #ifndef STDATOMIC_H
    #define STDATOMIC_H
    #include <stdatomic.h>
@@ -13,6 +18,27 @@
    #define STDBOOL_H
    #include <stdbool.h>
 #endif
+
+#ifndef STDLIB_H
+   #define STDLIB_H
+   #include <stdlib.h>
+#endif
+
+struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
+
+  struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));;
+  if ( ( end->tv_nsec - start->tv_nsec ) < 0 ) {
+    result->tv_sec = end->tv_sec - start->tv_sec - 1;
+    result->tv_nsec = 1000000000 + end->tv_nsec - start->tv_nsec;
+  } 
+  else {
+    result->tv_sec = end->tv_sec - start->tv_sec;
+    result->tv_nsec = end->tv_nsec - start->tv_nsec;
+  }
+  return result;
+  
+}
+
 
 /*
  * Lock-Free Queue(http://www.drdobbs.com/parallel/writing-lock-free-code-a-corrected-queue/210604448?pgno=2)
@@ -115,6 +141,7 @@ extern void* lockfree_queue_remove_all_items();
 extern void* comm_listener_global_balance();
 extern void* comm_listener_global_size();
 
+extern struct timespec *time_diff(struct timespec *start, struct timespec *end);
 extern void* remove_count_nuller();
 extern int  getInsertionTid();
 extern int  getRemovalTid();
