@@ -942,7 +942,7 @@ void* lockfree_queue_load_balancer(void* arg) {
   * TODO dynamic threshold setting -> to qsize watcher
   */
 
-  pthread_mutex_lock(&load_balance_mutex); //pthread_cond_wait() releases mutex
+  //pthread_mutex_lock(&load_balance_mutex); //pthread_cond_wait() releases mutex
   LOCK_LOCAL_QUEUES();
 
   //#ifdef COUNTERS
@@ -1013,7 +1013,7 @@ void* lockfree_queue_load_balancer(void* arg) {
   UNLOCK_LOCAL_QUEUES();
   //pthread_cond_broadcast(&load_balance_cond);
   load_balancing_t_running_flag = false;
-  pthread_mutex_unlock(&load_balance_mutex);
+  //pthread_mutex_unlock(&load_balance_mutex);
 
   //#ifdef COUNTERS
     clock_gettime(CLOCK_REALTIME, tp_rt_end);
@@ -1203,7 +1203,6 @@ void* lockfree_queue_qsize_watcher() {
       if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
          
          load_balancing_t_running_flag = true;
-         atomic_fetch_add(&load_balancer_call_count_watcher, 1);
          QSIZE_WATCHER_LOG_DEBUG_TD("Starting load balancer thread.\n");
 
          int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, qsize_history);
@@ -1214,7 +1213,7 @@ void* lockfree_queue_qsize_watcher() {
             pthread_mutex_unlock(&load_balance_mutex);
             continue;
          }
-
+         atomic_fetch_add(&load_balancer_call_count_watcher, 1);
          QSIZE_WATCHER_LOG_DEBUG_TD("Waiting for load balance thread to finish\n");
          
          /*
@@ -1345,10 +1344,10 @@ void* lockfree_queue_remove_item (int timeout) {
             if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
               load_balancing_t_running_flag = true;
 
-              pthread_attr_t attr_lb;
-              pthread_attr_init(&attr_lb);
-              pthread_attr_setdetachstate(&attr_lb, PTHREAD_CREATE_JOINABLE);
-              int rc = pthread_create(&load_balancing_t, &attr_lb, lockfree_queue_load_balancer, NULL);
+              //pthread_attr_t attr_lb;
+              //pthread_attr_init(&attr_lb);
+              //pthread_attr_setdetachstate(&attr_lb, PTHREAD_CREATE_JOINABLE);
+              int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, NULL);
               if (rc) {
                 printf("ERROR: (remove item) return code from pthread_create() of load_balancing_t is %d\n", rc);
                 load_balancing_t_running_flag = false;
@@ -1362,6 +1361,7 @@ void* lockfree_queue_remove_item (int timeout) {
                 pthread_mutex_unlock(&rm_mutexes[tid]);
                 pthread_join(load_balancing_t, NULL);
                 pthread_mutex_unlock(&load_balance_mutex);
+                //pthread_attr_destroy(attr_lb);
               }
             }
             else {
