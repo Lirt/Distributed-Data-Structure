@@ -141,6 +141,7 @@ extern void* lockfree_queue_remove_all_items();
 extern void* comm_listener_global_balance();
 extern void* comm_listener_global_size();
 
+extern double sum_time(time_t sec, long nsec);
 extern struct timespec *time_diff(struct timespec *start, struct timespec *end);
 extern void* remove_count_nuller();
 extern int  getInsertionTid();

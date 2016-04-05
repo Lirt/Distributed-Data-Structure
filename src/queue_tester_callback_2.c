@@ -218,6 +218,7 @@ void *work(void *arg_struct) {
          LOG_DEBUG_TD(*tid, "Time is up, endTime = %d\n", endTime);
          LOG_DEBUG_TD(*tid, "\tQueue has %d ratio\n", ratio);
          LOG_DEBUG_TD(*tid, "\tThread Inserted %lu items\n", n_inserted);
+         LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted);
          //printf("T%ld: Queue has %d ratio\n", *tid, ratio);
          //printf("T%ld: Time is up, endTime = %d\n", *tid, endTime);
          //printf("Thread %ld Inserted %lu items\n", *tid, n_inserted);
@@ -237,9 +238,9 @@ void *work(void *arg_struct) {
             #ifdef COUNTERS
                sum += *rn;
                atomic_fetch_add( &total_sum_ins, *rn);
-               n_inserted++;
                atomic_fetch_add( &total_inserts, 1);
             #endif
+            n_inserted++;
             lockfree_queue_insert_item(rn);
 
             //end after "program_duration" seconds
@@ -248,6 +249,7 @@ void *work(void *arg_struct) {
                LOG_DEBUG_TD(*tid, "Time is up, endTime = %d\n", endTime);
                LOG_DEBUG_TD(*tid, "\tThread Inserted %lu items\n", n_inserted);
                LOG_DEBUG_TD(*tid, "\tSum of insertion thread items is %lu\n", sum);
+               LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted);
                //printf("T%ld: Time is up, endTime = %d\n", *tid, endTime);
                //printf("\tThread %ld Inserted %lu items\n", *tid, n_inserted);
                //printf("\tSum of insertion thread %ld items is %lu\n", *tid, sum);
@@ -279,9 +281,9 @@ void *work(void *arg_struct) {
                NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *(rn_array[i]) );
             }
             #ifdef COUNTERS
-               n_inserted += ratio;
                atomic_fetch_add( &total_inserts, ratio);
             #endif
+            n_inserted += ratio;
             lockfree_queue_insert_N_items( (void**) rn_array, ratio);
 
             //end after "program_duration" seconds
@@ -290,6 +292,8 @@ void *work(void *arg_struct) {
                LOG_DEBUG_TD(*tid, "Time is up, endTime = %d\n", endTime);
                LOG_DEBUG_TD(*tid, "\tThread Inserted %lu items\n", n_inserted);
                LOG_DEBUG_TD(*tid, "\tSum of insertion thread items is %lu\n", sum);
+               LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted);
+
                //printf("T%ld: Time is up, endTime = %d\n", *tid, endTime);
                //printf("\tThread %ld Inserted %lu items\n", *tid, n_inserted);
                //printf("\tSum of insertion thread %ld items is %lu\n", *tid, sum);
@@ -338,7 +342,8 @@ void *work(void *arg_struct) {
                   //printf("END PROGRAM[T%ld]: \n\tRealtime - %lu.%lu seconds\n\tProcess Time - %lu.%lu seconds\n\tThread Time - %lu.%lu seconds\n", *tid,
                      //tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_proc_end->tv_sec, tp_proc_end->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
 
-                  LOG_DEBUG_TD(*tid, "Thread removed %lu numbers\n", n_removed);
+                  LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed);
+                  //LOG_DEBUG_TD(*tid, "Thread removed %lu numbers\n", n_removed);
                   LOG_DEBUG_TD(*tid, "Sum of removal thread items is %lu\n", sum);
                   //printf("\tThread %ld removed %lu numbers\n", *tid, n_removed);
                   //printf("\tSum of removal thread %ld items is %lu\n", *tid, sum);
@@ -347,15 +352,15 @@ void *work(void *arg_struct) {
                      LOG_DEBUG_TD(*tid, "Total sum of inserted items is %lu\n", atomic_load(&total_sum_ins));
                      LOG_DEBUG_TD(*tid, "Total inserted items %lu\n", atomic_load(&total_inserts));
                      LOG_DEBUG_TD(*tid, "Total removed items %lu\n", atomic_load(&total_removes));
-                     LOG_DEBUG_TD(*tid, "Final realtime program time = '%lu.%lu'\n", 
+                     LOG_DEBUG_TD(*tid, "Final realtime program time = %lu.%lu\n", 
                         time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-                     LOG_DEBUG_TD(*tid, "Final process time = '%lu.%lu'\n", 
+                     LOG_DEBUG_TD(*tid, "Final process time = %lu.%lu\n", 
                         time_diff(tp_proc_start, tp_proc_end)->tv_sec, time_diff(tp_proc_start, tp_proc_end)->tv_nsec );
                      
                      LOG_INFO_TD("Total removed items %lu\n", atomic_load(&total_removes));
-                     LOG_INFO_TD("Final realtime program time = '%lu.%lu'\n", 
+                     LOG_INFO_TD("Final realtime program time = %lu.%lu\n", 
                         time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-                     LOG_INFO_TD("Final process time = '%lu.%lu'\n", 
+                     LOG_INFO_TD("Final process time = %lu.%lu\n", 
                         time_diff(tp_proc_start, tp_proc_end)->tv_sec, time_diff(tp_proc_start, tp_proc_end)->tv_nsec );
                      //printf("\tT[%ld]: Total sum is %lu\n", *tid, atomic_load(&total_sum_rm));
                      //printf("\tT[%ld]: Total inserted items %lu\n", *tid, atomic_load(&total_inserts));
@@ -384,10 +389,10 @@ void *work(void *arg_struct) {
          else {
             NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
             #ifdef COUNTERS
-               n_removed++;
                sum += *retval;
                atomic_fetch_add( &total_sum_rm, *retval);
             #endif
+            n_removed++;
             atomic_fetch_add( &total_removes, 1);  //ALWATS COUNTING TO COMPARE PERFORMANCE
             free(retval);
          }
@@ -411,8 +416,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
          printf("OPT: Program duration set to %s\n", arg);
          program_duration = strtoul(arg, NULL, 0);
          if (program_duration == 0) {
-            LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
-            fprintf (stderr, "OPT: [FAILURE] cannot convert string to number\n");
+            //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
+            fprintf (stderr, "OPT[ERROR]: 'd' Cannot convert string to number\n");
             exit(-1);
          }
          break;
@@ -421,14 +426,16 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
          printf("OPT: Queue count set to %s\n", arg);
          queue_count_arg = strtoul(arg, NULL, 0);
          if (queue_count_arg == 0) {
-            LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
-            fprintf (stderr, "OPT: [FAILURE] cannot convert string to number\n");
+            //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
+            fprintf (stderr, "OPT[ERROR]: 'q' Cannot convert string to number\n");
             exit(-1);
          }
-         free(q_ratios);
-         q_ratios = (unsigned int*) malloc(queue_count_arg * sizeof(unsigned int));
-         for (int i = 0; i < queue_count_arg; i++) {
-            q_ratios[i] = 1;
+         if (queue_count_arg > 4) {
+            free(q_ratios);
+            q_ratios = (unsigned int*) malloc(queue_count_arg * sizeof(unsigned int));
+            for (int i = 0; i < queue_count_arg; i++) {
+               q_ratios[i] = 1;
+            }
          }
          break;
       }
@@ -442,8 +449,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
             load_balance_thread_arg = false;
          }
          else {
-            LOG_ERR_T( (long) -1, "Option to load balance argument must be ""true"" or ""false""\n");
-            fprintf(stderr, "OPT: [ERROR] Option to load balance argument must be ""true"" or ""false""\n");
+            //LOG_ERR_T( (long) -1, "Option to load balance argument must be ""true"" or ""false""\n");
+            fprintf(stderr, "OPT[ERROR]: Option to load balance argument must be ""true"" or ""false""\n");
             exit(-1);
          }
          break;
@@ -451,8 +458,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       case 150: {
          local_lb_threshold_percent = atof(arg);
          if ( local_lb_threshold_percent == 0.0 ) {
-            LOG_ERR_T( (long) -1, "Cannot parse floating point number\n");
-            fprintf(stderr, "OPT: [ERROR] LOCAL THRESHOLD PERCENT: Cannot parse floating point number\n");
+            //LOG_ERR_T( (long) -1, "Cannot parse floating point number\n");
+            fprintf(stderr, "OPT[ERROR]: LOCAL THRESHOLD PERCENT: Cannot parse floating point number\n");
             exit(-1);
          }
          printf("OPT: Local LB threshold set to %lf%%\n", local_lb_threshold_percent);
@@ -462,8 +469,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       case 151: {
          global_lb_threshold_percent = atof(arg);
          if ( global_lb_threshold_percent == 0.0 ) {
-            LOG_ERR_T( (long) -1, "Cannot parse floating point number\n");
-            fprintf(stderr, "OPT: [ERROR] GLOBAL THRESHOLD PERCENT: Cannot parse floating point number\n");
+            //LOG_ERR_T( (long) -1, "Cannot parse floating point number\n");
+            fprintf(stderr, "OPT[ERROR]: GLOBAL THRESHOLD PERCENT: Cannot parse floating point number\n");
             exit(-1);
          }
          printf("OPT: Global LB threshold set to %lf%%\n", global_lb_threshold_percent);
@@ -473,8 +480,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       case 152: {
          local_lb_threshold_static = strtoul(arg, NULL, 0);
          if ( local_lb_threshold_static == 0 ) {
-            LOG_ERR_T( (long) -1, "Cannot parse number\n");
-            fprintf(stderr, "OPT: [ERROR] LOCAL THRESHOLD STATIC: Cannot parse number\n");
+            //LOG_ERR_T( (long) -1, "Cannot parse number\n");
+            fprintf(stderr, "OPT[ERROR]: LOCAL THRESHOLD STATIC: Cannot parse number\n");
             exit(-1);
          }
          printf("OPT: Local LB threshold set to %lu items\n", local_lb_threshold_static);
@@ -484,8 +491,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       case 153: {
          global_lb_threshold_static = strtoul(arg, NULL, 0);
          if ( global_lb_threshold_static == 0 ) {
-            LOG_ERR_T( (long) -1, "Cannot parse number\n");
-            fprintf(stderr, "OPT: [ERROR] GLOBAL THRESHOLD STATIC: Cannot parse number\n");
+            //LOG_ERR_T( (long) -1, "Cannot parse number\n");
+            fprintf(stderr, "OPT[ERROR]: GLOBAL THRESHOLD STATIC: Cannot parse number\n");
             exit(-1);
          }
          printf("OPT: Global LB threshold set to %lu items\n", global_lb_threshold_static);
@@ -506,58 +513,66 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
             load_balance_local_type_arg = 3;
          }
          else {
-            LOG_ERR_T( (long) -1, "Option to load balance type argument must be ""static"", ""percent"" or ""dynamic""\n");
-            fprintf(stderr, "OPT: [ERROR] Option to load balance type argument must be ""static"", ""percent"" or ""dynamic""\n");
+            //LOG_ERR_T( (long) -1, "Option to load balance type argument must be ""static"", ""percent"" or ""dynamic""\n");
+            fprintf(stderr, "OPT[ERROR]: Option to load balance type argument must be ""static"", ""percent"" or ""dynamic""\n");
             exit(-1);
          }
          break;
       }
       case 220: {
-         q_ratios[0] = (unsigned int) strtoul(arg, NULL, 0);
-         if (q_ratios[0] == 0) {
-            LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
-            argp_failure (state, 1, 0, "OPT: [FAILURE] Cannot convert string to number");
+         char *endptr;
+         q_ratios[0] = strtoul(arg, &endptr, 10);
+         errno = 0;
+         if (endptr == arg) {
+            //LOG_ERR_T( (long) -1, "cannot convert string to number\n");
+            argp_failure (state, 1, 0, "OPT[ERROR]: 'qr1' Cannot convert string to number");
             exit(-1);
          }
-         printf("OPT: Q0 ratio set to %u\n", q_ratios[0]);
+         printf("OPT: Q1 ratio set to %u\n", q_ratios[0]);
          break;
       }
       case 221: {
-         q_ratios[1] = strtoul(arg, NULL, 0);
-         if (q_ratios[1] == 0) {
-            LOG_ERR_T( (long) -1, "cannot convert string to number\n");
-            argp_failure (state, 1, 0, "OPT: [FAILURE] Cannot convert string to number");
+         char *endptr;
+         q_ratios[1] = strtoul(arg, &endptr, 10);
+         errno = 0;
+         if (endptr == arg) {
+            //LOG_ERR_T( (long) -1, "cannot convert string to number\n");
+            argp_failure (state, 1, 0, "OPT[ERROR]: 'qr2' Cannot convert string to number");
             exit(-1);
          }
-         printf("OPT: Q1 ratio set to %u\n", q_ratios[1]);
+         printf("OPT: Q2 ratio set to %u\n", q_ratios[1]);
          break;
       }
       case 222: {
-         q_ratios[2] = strtoul(arg, NULL, 0);
-         if (q_ratios[2] == 0) {
-            LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
-            argp_failure (state, 1, 0, "OPT: [FAILURE] Cannot convert string to number");
+         char *endptr;
+         q_ratios[2] = strtoul(arg, &endptr, 10);
+         errno = 0;
+         if (endptr == arg) {
+            //LOG_ERR_T( (long) -1, "cannot convert string to number\n");
+            argp_failure (state, 1, 0, "OPT[ERROR]: 'qr3' Cannot convert string to number");
             exit(-1);
          }
-         printf("OPT: Q2 ratio set to %u\n", q_ratios[2]);
+         printf("OPT: Q3 ratio set to %u\n", q_ratios[2]);
          break;
       }
       case 223: {
-         q_ratios[3] = strtoul(arg, NULL, 0);
-         if (q_ratios[3] == 0) {
-            LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
-            argp_failure (state, 1, 0, "OPT: [FAILURE] Cannot convert string to number");
+         char *endptr;
+         q_ratios[3] = strtoul(arg, &endptr, 10);
+         errno = 0;
+         if (endptr == arg) {
+            //LOG_ERR_T( (long) -1, "cannot convert string to number\n");
+            argp_failure (state, 1, 0, "OPT[ERROR]: 'qr4' Cannot convert string to number");
             exit(-1);
          }
-         printf("OPT: Q3 ratio set to %u\n", q_ratios[3]);
+         printf("OPT: Q4 ratio set to %u\n", q_ratios[3]);
          break;
       }
       case ARGP_KEY_END: {
          printf("\n");
          if ( *arg_lb_count < 3 && *arg_lb_count != 0 ) {
             argp_usage (state);
-            LOG_ERR_T( (long) -1, "Too few arguments for LB\n");
-            argp_failure (state, 1, 0, "OPT: [FAILURE] Too few arguments for LB");
+            //LOG_ERR_T( (long) -1, "Too few arguments for LB\n");
+            argp_failure (state, 1, 0, "OPT[ERROR]: Too few arguments for LB");
             exit(-1);
          }
          break;
@@ -577,11 +592,12 @@ int main(int argc, char** argv) {
 
    setbuf(stdout, NULL);
 
-   q_ratios = (unsigned int*) malloc(2 * sizeof(unsigned int));
-   for (int i = 0; i < 2; i++) {
+   q_ratios = (unsigned int*) malloc(4 * sizeof(unsigned int));
+   for (int i = 0; i < 4; i++) {
       q_ratios[i] = 1;
    }
 
+   //TODO FIX BUG WHEN FAST EXECUTING WILL SEGFAULT
    //TODO add len_s parameter for dynamic threshold
 
    struct argp_option options[] = { 
@@ -610,10 +626,16 @@ int main(int argc, char** argv) {
    atomic_init(&total_sum_rm, 0);
    atomic_init(&total_sum_ins, 0);
 
-   lockfree_queue_init_callback(work, NULL, queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
+   pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
       local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
       global_lb_threshold_static, load_balance_local_type_arg);
 
-   pthread_exit(NULL);
+   //printf("Main finished\n");
+   //pthread_exit(NULL);
+
+   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
+      pthread_join(cb_threads[i], NULL);
+   }
+   printf("Main finished\n");
 	return 0;
 }

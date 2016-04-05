@@ -7,6 +7,11 @@
    #include <stdbool.h>
 #endif
 
+#ifndef PTHREAD_H
+   #define PTHREAD_H
+   #include <pthread.h>
+#endif
+
 //TODO REMOVE WHEN IT WILL NOT BE NEEDED
 struct q_args {
    void* args;
@@ -21,7 +26,7 @@ struct q_args {
 extern void lockfree_queue_destroy(void);
 extern unsigned long global_size(); 
 //extern void lockfree_queue_init_callback(void *(*callback)(void *args), void *arguments, int queue_count, int thread_count);
-void lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, 
+pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, 
   unsigned int queue_count_arg, unsigned int thread_count_arg, 
   bool qw_thread_enable_arg, double local_lb_threshold_dynamic, double global_lb_threshold_dynamic, 
   unsigned long local_lb_threshold_static, unsigned long global_lb_threshold_static, unsigned int local_lb_type );

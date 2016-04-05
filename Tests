@@ -7,3 +7,13 @@
 gdb --args <program> <args>
 gdb --args queue_tester_callback -d 20 -q 2 -l false --local-threshold-type=static --local-threshold-static=20000 --global-threshold-static=50000 --q1-ratio=1 --q2-ratio=1
 
+#GDB and CORE DUMPS
+set print thread-events off
+http://radek.io/2012/02/11/core-dumps-in-fedora/
+/var/spool/abrt/
+gdb a.out core.19233
+
+gdb /home/ovasko/DP/bin/queue_tester_callback_2 ccpp-2016-04-05-15:32:16-18721/coredump
+
+
+./queue_tester_callback -d 100 -q 1 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 

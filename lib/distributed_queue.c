@@ -78,6 +78,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+
+#ifndef THREAD_STACK_SIZE
+  //#define THREAD_STACK_SIZE  65536
+  #define THREAD_STACK_SIZE  1048576  //min. 1MB
+#endif
+
+
 typedef struct tid_hash_struct {
     unsigned long id;      /* key */
     long tid;
@@ -153,10 +160,15 @@ FILE *log_file_global_comm;
 /*
  * Statistical variables
  */
+
 atomic_ulong moved_items_log;
 atomic_ulong load_balancer_call_count_watcher;
 atomic_ulong load_balancer_call_count_remove;
 atomic_ulong load_balancer_call_count_global;
+time_t total_rt_lb_time_sec;
+long total_rt_lb_time_nsec;
+time_t total_proc_lb_time_sec;
+long total_proc_lb_time_nsec;
 
 /*
  * GLOBAL BALANCING
@@ -360,7 +372,7 @@ bool lockfree_queue_is_empty_all_consistent_local() {
    
 }
 
-void lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, 
+pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, 
   unsigned int queue_count_arg, unsigned int thread_count_arg, 
   bool qw_thread_enable_arg, double local_lb_threshold_percent, double global_lb_threshold_percent, 
   unsigned long local_lb_threshold_static, unsigned long global_lb_threshold_static, unsigned int local_lb_type ) {
@@ -400,6 +412,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
 
   char pid_str[8];
   sprintf(pid_str, "%d", pid_int);
+  printf("pid=%d\n", pid_int);
 
   char filename_log_debug[50] = "/tmp/distributed_queue/log_debug";
   strcat(filename_log_debug, pid_str);
@@ -500,6 +513,10 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
   atomic_init(&load_balancer_call_count_global, 0);
   atomic_init(&rm_count, 0);
   atomic_init(&rm_count_last, 0);
+  total_rt_lb_time_sec = 0;
+  total_rt_lb_time_nsec = 0;
+  total_proc_lb_time_sec = 0;
+  total_proc_lb_time_nsec = 0;
 
   /*
    * ID of master node on start of program is 0 and is saved in master_id variable
@@ -546,6 +563,7 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
 
   pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  //pthread_attr_setstacksize(&attrs, THREAD_STACK_SIZE);
   pthread_mutexattr_init(&mutex_attr);
 
   /*
@@ -623,6 +641,11 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
    callback_threads = (pthread_t*) malloc (thread_count * sizeof(pthread_t));
    tids = (long**) malloc (thread_count * sizeof(long));
 
+  for (int i = 0; i < thread_count; i++) {
+    tids[i] = (long*) malloc ( sizeof(long) );
+    *tids[i] = i;
+  }
+
 
   /*
    * Initialize qsize watcher
@@ -640,6 +663,9 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
   }
   else if ( local_lb_type == 3 ) {
     threshold_type = 3;
+  }
+  else if ( local_lb_type == 0 ) {
+    LOG_INFO_TD("Qsize watcher has no load balancing type --> local_lb_type is NULL\n");
   }
   else {
     //fprintf(stderr, "ERROR: Bad argument for local_lb_type\n");
@@ -679,8 +705,6 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
 
    for (int i = 0; i < thread_count; i++) {
 
-      tids[i] = (long*) malloc ( sizeof(long));
-      *tids[i] = i;
       q_args_t[i] = (struct q_args*) malloc (sizeof(struct q_args));
       q_args_t[i]->args = arguments;
       q_args_t[i]->tid = tids[i];
@@ -704,6 +728,8 @@ void lockfree_queue_init_callback ( void* (*callback)(void *args), void* argumen
     LOG_ERR_T( (long) -1, "Pthread create failed\n");
     exit(-1);
   }
+
+  return callback_threads;
 
 }
 
@@ -919,7 +945,7 @@ void* lockfree_queue_load_balancer(void* arg) {
   pthread_mutex_lock(&load_balance_mutex); //pthread_cond_wait() releases mutex
   LOCK_LOCAL_QUEUES();
 
-  #ifdef COUNTERS
+  //#ifdef COUNTERS
     struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
     struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
     struct timespec *tp_proc_start = (struct timespec*) malloc (sizeof (struct timespec));
@@ -927,8 +953,8 @@ void* lockfree_queue_load_balancer(void* arg) {
     struct timespec *tp_thr = (struct timespec*) malloc (sizeof (struct timespec));
     clock_gettime(CLOCK_REALTIME, tp_rt_start);
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_start);
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);    
-  #endif
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
+  //#endif
   LOAD_BALANCE_LOG_DEBUG_TD("LB TIME START: \n\tRealtime - %lu.%lu seconds\n\tProcess Time- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
     tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
 
@@ -985,21 +1011,26 @@ void* lockfree_queue_load_balancer(void* arg) {
   free(indexes);
 
   UNLOCK_LOCAL_QUEUES();
-  pthread_cond_broadcast(&load_balance_cond);
+  //pthread_cond_broadcast(&load_balance_cond);
   load_balancing_t_running_flag = false;
   pthread_mutex_unlock(&load_balance_mutex);
 
-  #ifdef COUNTERS
+  //#ifdef COUNTERS
     clock_gettime(CLOCK_REALTIME, tp_rt_end);
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_end);
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
-  #endif
+  //#endif
   LOAD_BALANCE_LOG_DEBUG_TD("LB TIME END: \n\tRealtime - %lu.%lu seconds\n\tProcess Time- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
     tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_proc_end->tv_sec, tp_proc_end->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
   LOAD_BALANCE_LOG_DEBUG_TD("Final realtime local LB time = '%lu.%lu'\n", 
     time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
   LOAD_BALANCE_LOG_DEBUG_TD("Final process local LB time = '%lu.%lu'\n", 
     time_diff_dds(tp_proc_start, tp_proc_end)->tv_sec, time_diff_dds(tp_proc_start, tp_proc_end)->tv_nsec );
+
+  total_rt_lb_time_sec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec;
+  total_rt_lb_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec;
+  total_proc_lb_time_sec += time_diff_dds(tp_proc_start, tp_proc_end)->tv_sec;
+  total_proc_lb_time_nsec += time_diff_dds(tp_proc_start, tp_proc_end)->tv_nsec;
 
   return NULL;
 
@@ -1179,6 +1210,7 @@ void* lockfree_queue_qsize_watcher() {
          if (rc) {
             fprintf(stderr, "ERROR: (in qsize watcher) return code from pthread_create() load_balancing_t is %d\n", rc);
             QSIZE_WATCHER_LOG_DEBUG_TD("ERROR: return code from pthread_create() load_balancing_t is %d\n", rc);
+            load_balancing_t_running_flag = false;
             pthread_mutex_unlock(&load_balance_mutex);
             continue;
          }
@@ -1189,7 +1221,8 @@ void* lockfree_queue_qsize_watcher() {
           * TODO Recommended to use cond_wait in while loop
           * https://computing.llnl.gov/tutorials/pthreads/#ConditionVariables
           */
-         pthread_cond_wait (&load_balance_cond, &load_balance_mutex);
+         //pthread_cond_wait (&load_balance_cond, &load_balance_mutex);
+         pthread_join(load_balancing_t, NULL);
          pthread_mutex_unlock(&load_balance_mutex);
 
          QSIZE_WATCHER_LOG_DEBUG_TD("QSIZE WATCHER: Got signal from load balancer -> returning to work\n\
@@ -1310,20 +1343,26 @@ void* lockfree_queue_remove_item (int timeout) {
          else {
             //pthread_mutex_trylock returns 0 if lock is acquired
             if ( pthread_mutex_trylock(&load_balance_mutex) == 0 ) {
-               load_balancing_t_running_flag = true;
-               atomic_fetch_add(&load_balancer_call_count_remove, 1);
+              load_balancing_t_running_flag = true;
 
-               int rc = pthread_create(&load_balancing_t, &attr, lockfree_queue_load_balancer, NULL);
-               if (rc) {
-                  printf("ERROR: (remove item) return code from pthread_create() of load_balancing_t is %d\n", rc);
-                  exit(-1);
-               }
-               else {
-                  //Rm mutex for this thread must be unlocked. May cause harm in other parts of code... 
-                  pthread_mutex_unlock(&rm_mutexes[tid]);
-                  pthread_cond_wait(&load_balance_cond, &load_balance_mutex);
-                  pthread_mutex_unlock(&load_balance_mutex);
-               }
+              pthread_attr_t attr_lb;
+              pthread_attr_init(&attr_lb);
+              pthread_attr_setdetachstate(&attr_lb, PTHREAD_CREATE_JOINABLE);
+              int rc = pthread_create(&load_balancing_t, &attr_lb, lockfree_queue_load_balancer, NULL);
+              if (rc) {
+                printf("ERROR: (remove item) return code from pthread_create() of load_balancing_t is %d\n", rc);
+                load_balancing_t_running_flag = false;
+                pthread_mutex_unlock(&rm_mutexes[tid]);
+                pthread_mutex_unlock(&load_balance_mutex);
+                continue;
+              }
+              else {
+                atomic_fetch_add(&load_balancer_call_count_remove, 1);
+                //Rm mutex for this thread must be unlocked. May cause harm in other parts of code... 
+                pthread_mutex_unlock(&rm_mutexes[tid]);
+                pthread_join(load_balancing_t, NULL);
+                pthread_mutex_unlock(&load_balance_mutex);
+              }
             }
             else {
                pthread_mutex_unlock(&rm_mutexes[tid]);
@@ -1713,11 +1752,21 @@ void lockfree_queue_stop_watcher() {
     \n\tGlobal balance was initiated %lu times\n\tLocal balance moved %lu items\n", atomic_load(&load_balancer_call_count_watcher),
     atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), 
     atomic_load(&moved_items_log));
+
+
+  double sum_rt_time = sum_time(total_rt_lb_time_sec, total_rt_lb_time_nsec);
+  double sum_proc_time = sum_time(total_proc_lb_time_sec, total_proc_lb_time_nsec);
+  //LOG_INFO_TD("lb_rt_time = %ld:%ld\nlb_proc_time = %ld:%ld", 
+  //  total_rt_lb_time_sec, total_rt_lb_time_nsec, total_proc_lb_time_sec, total_proc_lb_time_nsec);
+  LOG_INFO_TD("\tTotal realtime spent in load balancer: %lf seconds\
+    \n\tTotal process time spent in load balancer: %lf seconds\n", sum_rt_time, sum_proc_time);
+    
+  //total_rt_lb_time_sec, (double) (total_rt_lb_time_nsec / (long) 1000000000),  );
    
-   //if ( pthread_cancel(listener_global_size_t) != 0 )
-   //   printf("Pthread cancel on listener_global_size_t failed\n");
-   //pthread_cancel(listener_global_balance_t);
-   //MPI_Finalize();   //TODO remove this function from here
+  //if ( pthread_cancel(listener_global_size_t) != 0 )
+  //   printf("Pthread cancel on listener_global_size_t failed\n");
+  //pthread_cancel(listener_global_balance_t);
+  //MPI_Finalize();   //TODO remove this function from here
 
 }
 
@@ -1757,10 +1806,21 @@ int* find_max_min_element_index(unsigned long *array, unsigned long len) {
 
 void* remove_count_nuller() {
 
+  //TODO TEST
+
   while(1) {
     sleep(1);
     atomic_store(&rm_count_last, atomic_load(&rm_count));
     atomic_store(&rm_count, 0);
   }
+
+}
+
+double sum_time(time_t sec, long nsec) {
+
+  double final_time = (double) 0;
+  final_time += (double) sec;
+  final_time += (double) nsec / (double) 1000000000;
+  return final_time;
 
 }
