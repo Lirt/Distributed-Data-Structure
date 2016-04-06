@@ -21,6 +21,7 @@ q_ratios=(${q_ratios1[@]} ${q_ratios2[@]} ${q_ratios3[@]})
 local_balance=false
 COUNT=${#q_ratios[@]}
 for q in ${queues[@]}; do
+	break
 	for d in ${durations[@]}; do
 		for ((i=0; i<$COUNT/4; i++)) do
 			#echo "bin/queue_tester_callback_2 -d $d -q $q -l $local_balance \
@@ -45,6 +46,7 @@ for q in ${queues[@]}; do
 			grep -E "Final realtime program time" $logfile >> $resultfile
 			grep -E "Final process time" $logfile >> $resultfile
 			grep -E -A6 "STATISTICS\:" $logfile >> $resultfile
+			echo "----" >> $resultfile
 			echo "" >> $resultfile
 			echo "" >> $resultfile
 		done
@@ -62,15 +64,16 @@ for q in ${queues[@]}; do
 				#echo "bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=${lt} \
 				#--q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
 				#--q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}"
-				bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=${lt} \
-				--q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
-				--q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}
+				
+				#bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=${lt} \
+				#--q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
+				#--q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}
 
 				pid=$(cat $dir/dds.pid)
 				logfile=$logfile_tmp$pid
-				echo "bin/queue_tester_callback_2 -d $d -q $q -l $local_balance \
-	--q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
-	--q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}" >> $resultfile
+				echo "bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=$lt \
+--q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
+--q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}" >> $resultfile
 				grep -E "ERROR" $logfile >> $resultfile
 				grep -E "T\[[0-9]+\]\: Inserted" $logfile >> $resultfile
 				grep -E "T\[[0-9]+\]\: Removed" $logfile >> $resultfile
@@ -78,6 +81,7 @@ for q in ${queues[@]}; do
 				grep -E "Final realtime program time" $logfile >> $resultfile
 				grep -E "Final process time" $logfile >> $resultfile
 				grep -E -A6 "STATISTICS\:" $logfile >> $resultfile
+				echo "----" >> $resultfile
 				echo "" >> $resultfile
 				echo "" >> $resultfile
 			done

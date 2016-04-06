@@ -17,3 +17,29 @@ gdb /home/ovasko/DP/bin/queue_tester_callback_2 ccpp-2016-04-05-15:32:16-18721/c
 
 
 ./queue_tester_callback -d 100 -q 1 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 
+
+
+
+
+log_debug31879: 
+   pid=31879
+   OPT: Program duration set to 5
+   OPT: Queue count set to 2
+   OPT: load balancing thread will NOT be enabled
+   OPT: Q1 ratio set to 0
+   OPT: Q2 ratio set to 1
+   OPT: Q3 ratio set to 1
+   OPT: Q4 ratio set to 1
+
+log_debug3892: 
+   pid=3892
+   OPT: Program duration set to 300
+   OPT: Queue count set to 2
+   OPT: load balancing thread will NOT be enabled
+   OPT: Q1 ratio set to 0
+   OPT: Q2 ratio set to 0
+   OPT: Q3 ratio set to 1
+   OPT: Q4 ratio set to 1
+
+gdb --args queue_tester_callback_2 -d 300 -q 2 -l false --q1-ratio=0 --q2-ratio=0 --q3-ratio=1 --q4-ratio=1
+./queue_tester_callback_2 -d 300 -q 4 -l false --q1-ratio=0 --q2-ratio=0 --q3-ratio=0 --q4-ratio=0

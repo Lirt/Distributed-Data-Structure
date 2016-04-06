@@ -226,7 +226,7 @@ void *work(void *arg_struct) {
          atomic_fetch_add( &finished, 1);
          fclose(work_file_ins);
          fclose(work_file_rm);
-         pthread_exit(NULL);
+         return NULL;
       }
 
       //Start producing items
@@ -257,7 +257,7 @@ void *work(void *arg_struct) {
                atomic_fetch_add( &finished, 1);
                fclose(work_file_ins);
                fclose(work_file_rm);
-               pthread_exit(NULL);
+               return NULL;
             }
          }
       }
@@ -301,7 +301,7 @@ void *work(void *arg_struct) {
                atomic_fetch_add( &finished, 1);
                fclose(work_file_ins);
                fclose(work_file_rm);
-               pthread_exit(NULL);
+               return NULL;
             }
          }
       }

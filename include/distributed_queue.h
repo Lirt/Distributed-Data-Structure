@@ -143,7 +143,7 @@ extern void* comm_listener_global_size();
 
 extern double sum_time(time_t sec, long nsec);
 extern struct timespec *time_diff(struct timespec *start, struct timespec *end);
-extern void* remove_count_nuller();
+extern void* remove_count_nuller(void *arg);
 extern int  getInsertionTid();
 extern int  getRemovalTid();
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);

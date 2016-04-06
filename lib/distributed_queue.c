@@ -121,6 +121,10 @@ pthread_mutex_t *add_mutexes;
 pthread_mutex_t *rm_mutexes;
 pthread_mutex_t insertionTidMutex;  //For creating hash table
 pthread_mutex_t removalTidMutex;    //For creating hash table
+pthread_mutex_t uthash_mutex;    //For hash table writes
+pthread_rwlock_t uthash_ins_rwlock;
+pthread_rwlock_t uthash_rm_rwlock;
+
 
 pthread_t load_balancing_t;
 pthread_mutex_t load_balance_mutex;
@@ -133,6 +137,7 @@ bool load_balancing_t_running_flag;
 bool qsize_watcher_t_running_flag;
 bool qsize_watcher_t_enable;
 bool flag_watcher_graceful_stop;
+bool flag_graceful_stop;
 
 unsigned long *qsize_history = NULL;
 double local_threshold_percent = 20.00;
@@ -190,80 +195,133 @@ double last_rebalance_time;   //For elimination of flooding network with global 
  **/
 
 int getInsertionTid() {
-   /*
-    * Returns thread id of insertion thread. 
-    * If thread is not mapped, this function will create mapping in hash table
-    */
-   struct tid_hash_struct *ths;
-   pthread_t pt = pthread_self();
-   HASH_FIND_INT( tid_insertion_hashes, &pt, ths );
-   if (ths == NULL) {
+  /*
+  * Returns thread id of insertion thread. 
+  * If thread is not mapped, this function will create mapping in hash table
+  */
+  struct tid_hash_struct *ths;
+  pthread_t pt = pthread_self();
 
-      pthread_mutex_lock(&insertionTidMutex);
-      unsigned int c = HASH_COUNT(tid_insertion_hashes);
-      
-      tid_hash_struct *tid_hash = NULL;
-      tid_hash = (tid_hash_struct*) malloc(sizeof (struct tid_hash_struct));
+  if (pthread_rwlock_rdlock(&uthash_rm_rwlock) != 0) {
+    LOG_ERR_T( (long) -1, "Can't acquire read lock\n");
+    exit(-1);
+  }
+  HASH_FIND_INT( tid_insertion_hashes, &pt, ths );
+  pthread_rwlock_unlock(&uthash_rm_rwlock);
 
-      tid_hash->id = pt;
-      tid_hash->tid = c;
-      LOG_DEBUG_TD( (long) c, "Insertion thread %ld mapped to Q%d\n", pt, c);
-      //printf("Insertion thread %ld mapped to Q%d\n", pt, c);
-      HASH_ADD_INT( tid_insertion_hashes, id, tid_hash );
+  if (ths == NULL) {
 
-      HASH_FIND_INT( tid_insertion_hashes, &pt, ths );
-      pthread_mutex_unlock(&insertionTidMutex);
+    pthread_mutex_lock(&insertionTidMutex);
+    unsigned int c = HASH_COUNT(tid_insertion_hashes);
+    
+    tid_hash_struct *tid_hash = NULL;
+    tid_hash = (tid_hash_struct*) malloc(sizeof (struct tid_hash_struct) );
+    if (tid_hash == NULL) {
+      LOG_ERR_T( (long) pt, "Malloc failed\n");
+    }
 
-   }
-   return ths->tid;
+    tid_hash->id = pt;
+    tid_hash->tid = c;
+    LOG_DEBUG_TD( (long) c, "Insertion thread %ld mapped to Q%d\n", pt, c);
+
+    if (pthread_rwlock_wrlock(&uthash_ins_rwlock) != 0) {
+      LOG_ERR_T( (long) -1, "Can't acquire write lock\n");
+      exit(-1);
+    }
+    HASH_ADD_INT( tid_insertion_hashes, id, tid_hash );
+    pthread_rwlock_unlock(&uthash_ins_rwlock);    
+
+    if (pthread_rwlock_rdlock(&uthash_ins_rwlock) != 0) {
+      LOG_ERR_T( (long) -1, "Can't acquire read lock\n");
+      exit(-1);
+    }
+    HASH_FIND_INT( tid_insertion_hashes, &pt, ths );
+    pthread_rwlock_unlock(&uthash_ins_rwlock);
+
+    pthread_mutex_unlock(&insertionTidMutex);
+
+  }
+  return ths->tid;
 }
 
 int getRemovalTid() {
-   /*
-    * Returns thread id of removal thread. 
-    * If thread is not mapped, this function will create mapping in hash table
-    */
-   struct tid_hash_struct *ths;
-   pthread_t pt = pthread_self();
-   HASH_FIND_INT( tid_removal_hashes, &pt, ths );
-   if (ths == NULL) {
 
-      pthread_mutex_lock(&removalTidMutex);
-      unsigned int c = HASH_COUNT(tid_removal_hashes);
+  /*
+  * Returns thread id of removal thread. 
+  * If thread is not mapped, this function will create mapping in hash table
+  */
 
-      tid_hash_struct *tid_hash = NULL;
-      tid_hash = (tid_hash_struct*) malloc(sizeof (struct tid_hash_struct));
+  struct tid_hash_struct *ths;
+  pthread_t pt = pthread_self();
 
-      tid_hash->id = pt;
-      tid_hash->tid = c;
-      LOG_DEBUG_TD( (long) c, "Removal thread %ld mapped to Q%d\n", pt, c);
-      //printf("Removal thread %ld mapped to Q%d\n", pt, c);
-      HASH_ADD_INT( tid_removal_hashes, id, tid_hash );
+  if (pthread_rwlock_rdlock(&uthash_rm_rwlock) != 0) {
+    LOG_ERR_T( (long) -1, "Can't acquire read lock\n");
+    exit(-1);
+  }
+  HASH_FIND_INT( tid_removal_hashes, &pt, ths );
+  pthread_rwlock_unlock(&uthash_rm_rwlock);
 
-      HASH_FIND_INT( tid_removal_hashes, &pt, ths );
-      pthread_mutex_unlock(&removalTidMutex);
+  if (ths == NULL) {
 
-   }
-   return ths->tid;
+    pthread_mutex_lock(&removalTidMutex);
+    unsigned int c = HASH_COUNT(tid_removal_hashes);
+
+    tid_hash_struct *tid_hash = NULL;
+    tid_hash = (tid_hash_struct*) malloc(sizeof (struct tid_hash_struct));
+    if (tid_hash == NULL) {
+      LOG_ERR_T( (long) pt, "Malloc failed\n");
+    }
+
+    tid_hash->id = pt;
+    tid_hash->tid = c;
+
+    if (pthread_rwlock_wrlock(&uthash_rm_rwlock) != 0) {
+    LOG_ERR_T( (long) -1, "Can't acquire write lock\n");
+      exit(-1);
+    }
+    HASH_ADD_INT( tid_removal_hashes, id, tid_hash );
+    pthread_rwlock_unlock(&uthash_rm_rwlock);
+
+
+    if (pthread_rwlock_rdlock(&uthash_rm_rwlock) != 0) {
+      LOG_ERR_T( (long) -1, "Can't acquire read lock\n");
+      exit(-1);
+    }
+    HASH_FIND_INT( tid_removal_hashes, &pt, ths );
+    pthread_rwlock_unlock(&uthash_rm_rwlock);
+
+    pthread_mutex_unlock(&removalTidMutex);
+
+  }
+  return ths->tid;
 }
 
 void lockfree_queue_destroy() {
    
-   //TODO test
-   //TODO handle errors and return bool true/false
-   //TODO decide which thread will destroy it and set tid 
-   //TODO After changes need to be recoded
-   //DONT USE 
+  //TODO test
+  //TODO handle errors and return bool true/false
+  //TODO decide which thread will destroy it and set tid 
+  //TODO After changes need to be recoded
+  //DONT USE 
 
-   //pthread_kill(tid, 0);
-   //No signal is sent, but error checking is still performed so you can use that to check existence of tid.
+  //pthread_kill(tid, 0);
+  //No signal is sent, but error checking is still performed so you can use that to check existence of tid.
 
-   //http://pubs.opengroup.org/onlinepubs/000095399/functions/pthread_cleanup_pop.html
+  //http://pubs.opengroup.org/onlinepubs/000095399/functions/pthread_cleanup_pop.html
 
-   int t_tmp = getInsertionTid();
-   //int t_tmp = getRemovalTid();
-   int t = t_tmp;
-   printf("%d\n", t);
+  int t_tmp = getInsertionTid();
+  //int t_tmp = getRemovalTid();
+  int t = t_tmp;
+  printf("%d\n", t);
+
+  if (pthread_rwlock_destroy(&uthash_ins_rwlock) != 0) {
+    fprintf(stderr,"lock destroy failed\n");
+    exit(-1);
+  }
+  if (pthread_rwlock_destroy(&uthash_rm_rwlock) != 0) {
+    fprintf(stderr,"lock destroy failed\n");
+    exit(-1);
+  }
 
    /*for (int i = 0; i < queue_count; i++) {
       pthread_mutex_lock(&add_mutexes[i]);
@@ -571,6 +629,15 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
    */
   pthread_mutex_init(&insertionTidMutex, &mutex_attr);
   pthread_mutex_init(&removalTidMutex, &mutex_attr);
+  pthread_mutex_init(&uthash_mutex, &mutex_attr);
+  if (pthread_rwlock_init(&uthash_ins_rwlock, NULL) != 0) {
+    fprintf(stderr,"Lock init of uthash_ins_rwlock failed\n");
+    exit(-1);
+  }
+  if (pthread_rwlock_init(&uthash_rm_rwlock, NULL) != 0) {
+    fprintf(stderr,"Lock init of uthash_rm_rwlock failed\n");
+    exit(-1);
+  }
 
   //pthread_condattr_init (attr)
   pthread_cond_init (&load_balance_cond, NULL);
@@ -601,7 +668,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   if (global_balancing_enable) {
     rc = pthread_create(&listener_global_balance_t, &attr, comm_listener_global_balance, NULL);
     if (rc) {
-      //printf("ERROR: (init) return code from pthread_create() on global balance listener is %d\n", rc);
+      fprintf(stderr, "ERROR: (init) return code from pthread_create() on global balance listener is %d\n", rc);
       LOG_ERR_T( (long) -1, "Pthread create failed\n");
       exit(-1);
     }
@@ -613,7 +680,8 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
    //TODO uncomment after function is done
    /*rc = pthread_create(&listener_global_size_t, &attr, comm_listener_global_size, NULL);
    if (rc) {
-      printf("ERROR: (init) return code from pthread_create() on global size listener is %d\n", rc);
+      fprintf(stderr, "ERROR: (init) return code from pthread_create() on global size listener is %d\n", rc);
+      LOG_ERR_T( (long) -1, "Pthread create failed\n");
       exit(-1);
    }*/
 
@@ -675,12 +743,13 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
 
   qsize_watcher_t_enable = qw_thread_enable_arg;
   flag_watcher_graceful_stop = false;
+  flag_graceful_stop = false;
   if ( qsize_watcher_t_enable ) {
     rc = pthread_create(&qsize_watcher_t, &attr, lockfree_queue_qsize_watcher, NULL);
     if (rc) {
-       //fprintf(stderr, "ERROR: (init qsize_watcher) return code from pthread_create() is %d\n", rc);
+      fprintf(stderr, "ERROR: (init qsize_watcher) return code from pthread_create() is %d\n", rc);
       LOG_ERR_T( (long) -1, "Pthread create failed\n");
-       exit(-1);
+      exit(-1);
     }
     else {
        //printf("QSIZE_THREAD: enabled\n");
@@ -694,39 +763,41 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   }
 
 
-   //printf("-----------CONFIGURATION-----------\n");
+  //printf("-----------CONFIGURATION-----------\n");
   LOG_INFO_TD("-----------CONFIGURATION-----------\n");
-
-   /*
-    * Settings for queue argument structure and thread mapping to queues
-    */
-   struct q_args **q_args_t;
-   q_args_t = (struct q_args**) malloc (thread_count * sizeof(struct q_args));
-
-   for (int i = 0; i < thread_count; i++) {
-
-      q_args_t[i] = (struct q_args*) malloc (sizeof(struct q_args));
-      q_args_t[i]->args = arguments;
-      q_args_t[i]->tid = tids[i];
-      q_args_t[i]->q_count = queue_count;
-      q_args_t[i]->t_count = thread_count;
-      
-      rc = pthread_create(&callback_threads[i], &attr, callback, q_args_t[i]);
-      if (rc) {
-        //fprintf(stderr, "ERROR: (init callback threads) return code from pthread_create() is %d\n", rc);
-        LOG_ERR_T( (long) -1, "Pthread create failed\n");
-        exit(-1);
-      }
-   }
 
   /*
    * Init remove count nuller
    */
+
   rc = pthread_create(&remove_count_nuller_t, &attr, remove_count_nuller, NULL);
   if (rc) {
-    //fprintf(stderr, "ERROR: (init remove_count_nuller) return code from pthread_create() is %d\n", rc);
+    fprintf(stderr, "ERROR: (init remove_count_nuller) return code from pthread_create() is %d\n", rc);
     LOG_ERR_T( (long) -1, "Pthread create failed\n");
     exit(-1);
+  }
+
+
+  /*
+  * Settings for queue argument structure and thread mapping to queues
+  */
+  struct q_args **q_args_t;
+  q_args_t = (struct q_args**) malloc (thread_count * sizeof(struct q_args));
+
+  for (int i = 0; i < thread_count; i++) {
+
+    q_args_t[i] = (struct q_args*) malloc (sizeof(struct q_args));
+    q_args_t[i]->args = arguments;
+    q_args_t[i]->tid = tids[i];
+    q_args_t[i]->q_count = queue_count;
+    q_args_t[i]->t_count = thread_count;
+    
+    rc = pthread_create(&callback_threads[i], &attr, callback, q_args_t[i]);
+    if (rc) {
+      fprintf(stderr, "ERROR: (init callback threads) return code from pthread_create() is %d\n", rc);
+      LOG_ERR_T( (long) -1, "Pthread create failed\n");
+      exit(-1);
+    }
   }
 
   return callback_threads;
@@ -1733,7 +1804,10 @@ void lockfree_queue_stop_watcher() {
     flag_watcher_graceful_stop = true;
     pthread_join(qsize_watcher_t, NULL);
   }
-  pthread_cancel(remove_count_nuller_t);
+  //pthread_cancel(remove_count_nuller_t);
+  //pthread_detach(remove_count_nuller_t);
+  flag_graceful_stop = true;
+  pthread_join(remove_count_nuller_t, NULL);
   //TODO cancel global balance/size listener thread
 
 
@@ -1804,16 +1878,20 @@ int* find_max_min_element_index(unsigned long *array, unsigned long len) {
    
 }
 
-void* remove_count_nuller() {
+void* remove_count_nuller(void *arg) {
 
   //TODO TEST
 
   while(1) {
     sleep(1);
+    if (flag_graceful_stop) {
+      //break;
+      pthread_exit(NULL);
+    }
     atomic_store(&rm_count_last, atomic_load(&rm_count));
     atomic_store(&rm_count, 0);
   }
-
+  //return NULL;
 }
 
 double sum_time(time_t sec, long nsec) {
