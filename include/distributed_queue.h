@@ -43,15 +43,22 @@ struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
 /*
  * Lock-Free Queue(http://www.drdobbs.com/parallel/writing-lock-free-code-a-corrected-queue/210604448?pgno=2)
  */
+
+#ifndef LOCKFREE_QUEUE_ARGS
+  #define LOCKFREE_QUEUE_ARGS
+  struct lockfree_queue_args_struct {
+    pthread_t *callback_threads;
+  };
+#endif
  
 /*
  * QUEUE ITEM
  */
 #ifndef LOCKFREE_QUEUE_ITEM
-   #define LOCKFREE_QUEUE_ITEM
+  #define LOCKFREE_QUEUE_ITEM
 	struct lockfree_queue_item {
 		void* val;
-      struct lockfree_queue_item *next;
+    struct lockfree_queue_item *next;
 	};
 #endif
  
@@ -59,7 +66,7 @@ struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
  * Lock-Free Queue struct
  */
 #ifndef DS_LOCKFREE_QUEUE
-   #define DS_LOCKFREE_QUEUE
+  #define DS_LOCKFREE_QUEUE
 	struct ds_lockfree_queue {
       //const int max;
       atomic_ulong a_qsize;
@@ -112,6 +119,21 @@ extern long **tids;
  * FUNCTIONS
  */
 
+struct load_balancer_struct {
+  long[2] pair;
+  unsigned long *qsize_history;
+};
+load_balancer_strategy lbs;
+
+extern typedef void* (*load_balancer_strategy)(void* arg);
+extern void* load_balancer_pair_balance(void* lb_struct); //arg=pair_balance_struct
+extern void* load_balancer_all_balance(void* lb_struct);  //arg=qsize_history
+
+extern qsize_watcher_strategy qw_strategy;
+extern typedef void* (*qsize_watcher_strategy)();
+extern void* qsize_watcher_min_max_strategy();
+extern void* qsize_watcher_local_threshold_strategy();
+
 //extern void lockfree_queue_destroy(void);
 extern void lockfree_queue_free(void *tid);
 //extern unsigned long global_size();
@@ -127,7 +149,7 @@ extern bool lockfree_queue_is_empty_all_consistent_local(void);
 extern void lockfree_queue_insert_item_by_tid(void *tid, void *val);
 extern void lockfree_queue_insert_item_by_tid_no_lock(void *tid, void *val);
 //extern void lockfree_queue_insert_N_items(void** values, int item_count);
-extern void* lockfree_queue_load_balancer();
+//extern void* load_balancer_all_balance();
 extern void lockfree_queue_move_items(int q_id_from, int q_id_to, unsigned long count);
 extern unsigned long lockfree_queue_size_by_tid(void *tid);
 extern unsigned long lockfree_queue_size_total(void);
@@ -137,7 +159,6 @@ extern void* lockfree_queue_qsize_watcher();
 //extern void* lockfree_queue_remove_item(int timeout);
 extern void* lockfree_queue_remove_item_by_tid(void *tid, int timeout);
 extern void* lockfree_queue_remove_item_by_tid_no_lock(void *tid, int timeout);
-extern void* lockfree_queue_remove_all_items();
 extern void* comm_listener_global_balance();
 extern void* comm_listener_global_size();
 

@@ -60,8 +60,6 @@ const char *argp_program_version = "DQS version 0.1";
 const char *argp_program_bug_address = "ondrej.vaskoo@gmail.com"; 
 static char doc[] = "DQS by Ondrej Vasko";
 
-//FILE *log_file_debug;
-
 atomic_ulong finished;
 atomic_ulong total_inserts;
 atomic_ulong total_removes;
@@ -71,7 +69,7 @@ atomic_ulong total_sum_ins;
 unsigned int program_duration = 10;
 unsigned int queue_count_arg = 0;
 bool load_balance_thread_arg = false;
-unsigned int load_balance_local_type_arg = 0;
+unsigned int threshold_type_arg = 0;
 double local_lb_threshold_percent = 0.0;
 double global_lb_threshold_percent = 0.0;
 unsigned long local_lb_threshold_static = 0;
@@ -105,7 +103,6 @@ int *generateRandomNumber(int rangeMin, int rangeMax) {
    if (r == NULL) {
       LOG_ERR_T((long) -1, "Malloc failed\n");
       return NULL;
-      //exit(-1);
    }
 	*r = rand() % rangeMax + rangeMin;
 	return r;
@@ -113,27 +110,9 @@ int *generateRandomNumber(int rangeMin, int rangeMax) {
 }
 
 void *work(void *arg_struct) {
-   
-   //TODO automatic counting of removes and inserts and evaluation
-
-   //SCENARE: 
-   //rozne dlzky program duration
-   //porovnat ako funguje s vlaknom qsizewatcher a bez, porovnanie load balance metod dlzkou programu / poctom add/rm
-   //statistiky, cim menej load balanceu
-   //meranie casu
 
    //TODO load balancovat k vlaknu ktore je prazdne. vyber od koho nahodne, parameter kolko presunut %.
-   //TODO spisat algoritmy
-   //TODO all printfs to log_debug
    //TODO load balancing lockuje len rady, kde sa presuva
-
-
-   //GET CPU TIME ALTERNATIVE
-   //begin = clock();
-   /* here, do your time-consuming job */
-   //end = clock();
-   //time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-
 
    struct q_args *args = arg_struct;
    long *tid = args->tid;
@@ -233,6 +212,8 @@ void *work(void *arg_struct) {
       if ( ratio == 1 ) {
          while(1) {
             rn = generateRandomNumber(lowRange, highRange);
+            if (rn == NULL)
+               continue;
             
             NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
             #ifdef COUNTERS
@@ -269,6 +250,10 @@ void *work(void *arg_struct) {
             }
             for(int i = 0; i < ratio; i++) {
                rn = generateRandomNumber(lowRange, highRange);
+               if (rn == NULL) {
+                  i--;
+                  continue;
+               }
                #ifdef COUNTERS
                   sum += *rn;
                   atomic_fetch_add( &total_sum_ins, *rn);
@@ -388,11 +373,9 @@ void *work(void *arg_struct) {
          }
          else {
             NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
-            #ifdef COUNTERS
-               sum += *retval;
-               atomic_fetch_add( &total_sum_rm, *retval);
-            #endif
             n_removed++;
+            sum += *retval;
+            atomic_fetch_add( &total_sum_rm, *retval);
             atomic_fetch_add( &total_removes, 1);  //ALWATS COUNTING TO COMPARE PERFORMANCE
             free(retval);
          }
@@ -402,13 +385,6 @@ void *work(void *arg_struct) {
 }
 
 static int parse_opt (int key, char *arg, struct argp_state *state) {
-   /*
-    * 1. The option's unique key, which can be the short option 'd'.  Other noncharacter
-    * keys exist
-    * 2. The value of the option's argument, as a string.
-    * 3. A variable that keeps Argp's state as we repeatedly iterate the callback
-    * function. 
-    */
 
    int *arg_lb_count = state->input; 
    switch (key) {
@@ -444,7 +420,7 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
             printf("OPT: load balancing thread will be enabled\n");
             load_balance_thread_arg = true;
          }
-         if ( strcmp(arg, "false") == 0 ) {
+         else if ( strcmp(arg, "false") == 0 ) {
             printf("OPT: load balancing thread will NOT be enabled\n");
             load_balance_thread_arg = false;
          }
@@ -501,20 +477,36 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       }
       case 154: {
          if ( strcmp(arg, "static") == 0 ) {
-            printf("OPT: Load balancing type set to static\n");
-            load_balance_local_type_arg = 1;
+            printf("OPT: Threshold type set to static\n");
+            threshold_type_arg = 1;
          }
          else if ( strcmp(arg, "percent") == 0 ) {
-            printf("OPT: Load balancing type set to percent\n");
-            load_balance_local_type_arg = 2;
+            printf("OPT: Threshold type set to percent\n");
+            threshold_type_arg = 2;
          }
          else if ( strcmp(arg, "dynamic") == 0 ) {
-            printf("OPT: Load balancing type set to dynamic\n");
-            load_balance_local_type_arg = 3;
+            printf("OPT: Threshold type set to dynamic\n");
+            threshold_type_arg = 3;
          }
          else {
             //LOG_ERR_T( (long) -1, "Option to load balance type argument must be ""static"", ""percent"" or ""dynamic""\n");
-            fprintf(stderr, "OPT[ERROR]: Option to load balance type argument must be ""static"", ""percent"" or ""dynamic""\n");
+            fprintf(stderr, "OPT[ERROR]: Option to Threshold type argument must be ""static"", ""percent"" or ""dynamic""\n");
+            exit(-1);
+         }
+         break;
+      }
+      case 155: {
+         if ( strcmp(arg, "all") == 0 ) {
+            printf("OPT: Load balancing type set to static\n");
+            local_balance_type_arg = 1;
+         }
+         else if ( strcmp(arg, "pair") == 0 ) {
+            printf("OPT: Load balancing type set to percent\n");
+            local_balance_type_arg = 2;
+         }
+         else {
+            //LOG_ERR_T( (long) -1, "Option to load balance type argument must be ""static"", ""percent"" or ""dynamic""\n");
+            fprintf(stderr, "OPT[ERROR]: Option to load balance type argument must be ""all"" or ""pair""\n");
             exit(-1);
          }
          break;
@@ -597,7 +589,6 @@ int main(int argc, char** argv) {
       q_ratios[i] = 1;
    }
 
-   //TODO FIX BUG WHEN FAST EXECUTING WILL SEGFAULT
    //TODO add len_s parameter for dynamic threshold
 
    struct argp_option options[] = { 
@@ -609,6 +600,8 @@ int main(int argc, char** argv) {
       { "local-threshold-static",   152, "<NUM>",           0, "Sets static threshold for local load balancing thread in number of items", 2},
       { "global-threshold-static",  153, "<NUM>",           0, "Sets static threshold for global load balancing thread in number of items", 2},
       { "local-threshold-type",     154, "static/percent/dynamic", 0, "Choses local threshold type", 2},
+      { "local-balance-type",       155, "all/pair", 0, "Choses local balancing type. Type all balances all queues to same size. 
+                                                         Type Pair balances only queue with lowest size with highest size queue.", 2},
       { "q1-ratio",                 220, "<NUM>",           0, "Number of items inserted into queue 1 on a insertion", 3},
       { "q2-ratio",                 221, "<NUM>",           0, "Number of items inserted into queue 2 on a insertion", 3},
       { "q3-ratio",                 222, "<NUM>",           0, "Number of items inserted into queue 3 on a insertion", 3},
@@ -628,10 +621,7 @@ int main(int argc, char** argv) {
 
    pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
       local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
-      global_lb_threshold_static, load_balance_local_type_arg);
-
-   //printf("Main finished\n");
-   //pthread_exit(NULL);
+      global_lb_threshold_static, threshold_type_arg, local_balance_type_arg);
 
    for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
       pthread_join(cb_threads[i], NULL);

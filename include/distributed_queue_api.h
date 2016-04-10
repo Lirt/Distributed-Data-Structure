@@ -24,7 +24,7 @@ struct q_args {
  * OFFICIAL API
  */
 extern void lockfree_queue_destroy(void);
-extern unsigned long global_size(); 
+extern unsigned long global_size();
 //extern void lockfree_queue_init_callback(void *(*callback)(void *args), void *arguments, int queue_count, int thread_count);
 pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, 
   unsigned int queue_count_arg, unsigned int thread_count_arg, 

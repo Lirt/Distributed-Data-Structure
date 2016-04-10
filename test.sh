@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 dir=/tmp/distributed_queue
 logfile_tmp=$dir/log_debug
@@ -6,12 +6,14 @@ resultfile=$dir/test_results.txt
 touch $resultfile
 
 queues=(1 2 4 8)
-durations=(5 10 30 120 300 1200)
+#durations=(5 10 30 120 300 1200)
+durations=(30 120 300)
 local_thresholds_static=(10000 20000 50000 100000)
 q_ratios1=(1 1 1 1)
-q_ratios2=(0 1 1 1)
-q_ratios3=(0 0 1 1)
-q_ratios=(${q_ratios1[@]} ${q_ratios2[@]} ${q_ratios3[@]})
+#q_ratios2=(0 1 1 1)
+#q_ratios3=(0 0 1 1)
+#q_ratios=(${q_ratios1[@]} ${q_ratios2[@]} ${q_ratios3[@]})
+computation-load=(0 10 16 21)
 
 #echo "qr ${#q_ratios[@]} ${q_ratios[@]}"
 
@@ -21,7 +23,7 @@ q_ratios=(${q_ratios1[@]} ${q_ratios2[@]} ${q_ratios3[@]})
 local_balance=false
 COUNT=${#q_ratios[@]}
 for q in ${queues[@]}; do
-	break
+	break	#TODO CARE
 	for d in ${durations[@]}; do
 		for ((i=0; i<$COUNT/4; i++)) do
 			#echo "bin/queue_tester_callback_2 -d $d -q $q -l $local_balance \
@@ -56,24 +58,27 @@ done
 ###
 #LOCAL BALANCING ON
 
+#nema zmysel pri q=1
 local_balance=true
 for q in ${queues[@]}; do
 	for d in ${durations[@]}; do
 		for lt in ${local_thresholds_static[@]}; do
-			for ((i=0; i<$COUNT/4; i++)) do
+			#for ((i=0; i<$COUNT/4; i++)) do
 				#echo "bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=${lt} \
 				#--q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
 				#--q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}"
 				
-				#bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=${lt} \
+				#bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=$lt \
 				#--q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
 				#--q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}
+
+				bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=$lt \
+				--q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
 
 				pid=$(cat $dir/dds.pid)
 				logfile=$logfile_tmp$pid
 				echo "bin/queue_tester_callback_2 -d $d -q $q -l $local_balance --local-threshold-type=static --local-threshold-static=$lt \
---q1-ratio=${q_ratios[$i*4]} --q2-ratio=${q_ratios[($i*4) + 1]} \
---q3-ratio=${q_ratios[($i*4) + 2]} --q4-ratio=${q_ratios[($i*4) + 3]}" >> $resultfile
+--q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1" >> $resultfile
 				grep -E "ERROR" $logfile >> $resultfile
 				grep -E "T\[[0-9]+\]\: Inserted" $logfile >> $resultfile
 				grep -E "T\[[0-9]+\]\: Removed" $logfile >> $resultfile
