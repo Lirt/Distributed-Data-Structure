@@ -52,10 +52,10 @@
 
 #include <argp.h>
 
-/*#ifndef MPI_H
+#ifndef MPI_H
    #define MPI_H
    #include "/usr/include/mpich-x86_64/mpi.h"
-#endif*/
+#endif
 
 /*
  * GLOBAL VARIABLES
@@ -388,7 +388,7 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       case 'd': {
          char *endptr;
          program_duration = strtoul(arg, &endptr, 10);
-         if (program_duration == arg) {
+         if (endptr == arg) {
             //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
             fprintf (stderr, "OPT[ERROR]: 'd' Cannot convert string to number\n");
             exit(-1);
@@ -399,7 +399,7 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       case 'q': {
          char *endptr;
          queue_count_arg = strtoul(arg, &endptr, 10);
-         if (queue_count_arg == arg) {
+         if (endptr == arg) {
             //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
             fprintf (stderr, "OPT[ERROR]: 'q' Cannot convert string to number\n");
             exit(-1);
@@ -454,8 +454,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       }
       case 152: {
          char *endptr;
-         local_lb_threshold_static = strtoul(arg, endptr, 10);
-         if ( local_lb_threshold_static == arg ) {
+         local_lb_threshold_static = strtoul(arg, &endptr, 10);
+         if ( endptr == arg ) {
             //LOG_ERR_T( (long) -1, "Cannot parse number\n");
             fprintf(stderr, "OPT[ERROR]: LOCAL THRESHOLD STATIC: Cannot parse number\n");
             exit(-1);
@@ -466,7 +466,7 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       }
       case 153: {
          char *endptr;
-         global_lb_threshold_static = strtoul(arg, endptr, 10);
+         global_lb_threshold_static = strtoul(arg, &endptr, 10);
          if ( endptr == arg ) {
             //LOG_ERR_T( (long) -1, "Cannot parse number\n");
             fprintf(stderr, "OPT[ERROR]: GLOBAL THRESHOLD STATIC: Cannot parse number\n");
@@ -612,13 +612,13 @@ int main(int argc, char** argv) {
       { "local-threshold-static",   152, "<NUM>",           0, "Sets static threshold for local load balancing thread in number of items", 2},
       { "global-threshold-static",  153, "<NUM>",           0, "Sets static threshold for global load balancing thread in number of items", 2},
       { "local-threshold-type",     154, "static/percent/dynamic", 0, "Choses local threshold type", 2},
-      { "local-balance-type",       155, "all/pair", 0, "Choses local balancing type. Type all balances all queues to same size. 
+      { "local-balance-type",       155, "all/pair", 0, "Choses local balancing type. Type all balances all queues to same size. \
                                                          Type Pair balances only queue with lowest size with highest size queue.", 2},
       { "q1-ratio",                 220, "<NUM>",           0, "Number of items inserted into queue 1 on a insertion", 3},
       { "q2-ratio",                 221, "<NUM>",           0, "Number of items inserted into queue 2 on a insertion", 3},
       { "q3-ratio",                 222, "<NUM>",           0, "Number of items inserted into queue 3 on a insertion", 3},
       { "q4-ratio",                 223, "<NUM>",           0, "Number of items inserted into queue 4 on a insertion", 3},
-      { "computation-load",         224, "<NUM>",           0, "Highest number of random number from 0 to N (0-24). Simulates computation. 
+      { "computation-load",         224, "<NUM>",           0, "Highest number of random number from 0 to N (0-24). Simulates computation.\
                                                                 Table of load times is in root folder of project.", 3},
       { 0 }  
    };

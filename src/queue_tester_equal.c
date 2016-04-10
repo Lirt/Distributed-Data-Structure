@@ -69,6 +69,7 @@ atomic_ulong total_sum_ins;
 unsigned int program_duration = 10;
 unsigned int queue_count_arg = 0;
 bool load_balance_thread_arg = false;
+unsigned int local_balance_type_arg = 0;
 unsigned int threshold_type_arg = 0;
 double local_lb_threshold_percent = 0.0;
 double global_lb_threshold_percent = 0.0;
@@ -600,7 +601,7 @@ int main(int argc, char** argv) {
       { "local-threshold-static",   152, "<NUM>",           0, "Sets static threshold for local load balancing thread in number of items", 2},
       { "global-threshold-static",  153, "<NUM>",           0, "Sets static threshold for global load balancing thread in number of items", 2},
       { "local-threshold-type",     154, "static/percent/dynamic", 0, "Choses local threshold type", 2},
-      { "local-balance-type",       155, "all/pair", 0, "Choses local balancing type. Type all balances all queues to same size. 
+      { "local-balance-type",       155, "all/pair", 0, "Choses local balancing type. Type all balances all queues to same size.\
                                                          Type Pair balances only queue with lowest size with highest size queue.", 2},
       { "q1-ratio",                 220, "<NUM>",           0, "Number of items inserted into queue 1 on a insertion", 3},
       { "q2-ratio",                 221, "<NUM>",           0, "Number of items inserted into queue 2 on a insertion", 3},

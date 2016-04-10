@@ -120,19 +120,19 @@ extern long **tids;
  */
 
 struct load_balancer_struct {
-  long[2] pair;
+  long pair[2];
   unsigned long *qsize_history;
 };
+
+typedef void* (*load_balancer_strategy)(void* arg);
+extern void* load_balancer_pair_balance(void* lb_struct); //arg=pair_balance_struct
+extern void* load_balancer_all_balance(void* qsize_history);  //arg=qsize_history
 load_balancer_strategy lbs;
 
-extern typedef void* (*load_balancer_strategy)(void* arg);
-extern void* load_balancer_pair_balance(void* lb_struct); //arg=pair_balance_struct
-extern void* load_balancer_all_balance(void* lb_struct);  //arg=qsize_history
-
-extern qsize_watcher_strategy qw_strategy;
-extern typedef void* (*qsize_watcher_strategy)();
+typedef void* (*qsize_watcher_strategy)();
 extern void* qsize_watcher_min_max_strategy();
 extern void* qsize_watcher_local_threshold_strategy();
+extern qsize_watcher_strategy qw_strategy;
 
 //extern void lockfree_queue_destroy(void);
 extern void lockfree_queue_free(void *tid);
@@ -160,11 +160,12 @@ extern void* lockfree_queue_qsize_watcher();
 extern void* lockfree_queue_remove_item_by_tid(void *tid, int timeout);
 extern void* lockfree_queue_remove_item_by_tid_no_lock(void *tid, int timeout);
 extern void* comm_listener_global_balance();
-extern void* comm_listener_global_size();
+extern void* comm_listener_global_size_consistent();
 
 extern double sum_time(time_t sec, long nsec);
 extern struct timespec *time_diff(struct timespec *start, struct timespec *end);
 extern void* remove_count_nuller(void *arg);
 extern int  getInsertionTid();
 extern int  getRemovalTid();
+extern long find_max_element_index(unsigned long *array, unsigned long len);
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);
