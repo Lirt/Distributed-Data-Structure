@@ -1,0 +1,99 @@
+cycles: 1
+Realtime program time for 2^0: 0.000072 seconds
+Realtime program time for 2^0 = 0.71921
+cycles: 2
+Realtime program time for 2^1: 0.000008 seconds
+Realtime program time for 2^1 = 0.8203
+cycles: 4
+Realtime program time for 2^2: 0.000005 seconds
+Realtime program time for 2^2 = 0.5432
+cycles: 8
+Realtime program time for 2^3: 0.000014 seconds
+Realtime program time for 2^3 = 0.14074
+cycles: 16
+Realtime program time for 2^4: 0.000015 seconds
+Realtime program time for 2^4 = 0.15032
+cycles: 32
+Realtime program time for 2^5: 0.000007 seconds
+Realtime program time for 2^5 = 0.6813
+cycles: 64
+Realtime program time for 2^6: 0.000007 seconds
+Realtime program time for 2^6 = 0.6721
+cycles: 128
+Realtime program time for 2^7: 0.000007 seconds
+Realtime program time for 2^7 = 0.7074
+cycles: 256
+Realtime program time for 2^8: 0.000017 seconds
+Realtime program time for 2^8 = 0.16864
+cycles: 512
+Realtime program time for 2^9: 0.000010 seconds
+Realtime program time for 2^9 = 0.9613
+cycles: 1024
+Realtime program time for 2^10: 0.000011 seconds
+Realtime program time for 2^10 = 0.11454
+cycles: 2048
+Realtime program time for 2^11: 0.000014 seconds
+Realtime program time for 2^11 = 0.14117
+cycles: 4096
+Realtime program time for 2^12: 0.000031 seconds
+Realtime program time for 2^12 = 0.31198
+cycles: 8192
+Realtime program time for 2^13: 0.000056 seconds
+Realtime program time for 2^13 = 0.55996
+cycles: 16384
+Realtime program time for 2^14: 0.000086 seconds
+Realtime program time for 2^14 = 0.86221
+cycles: 32768
+Realtime program time for 2^15: 0.000153 seconds
+Realtime program time for 2^15 = 0.152549
+cycles: 65536
+Realtime program time for 2^16: 0.000258 seconds
+Realtime program time for 2^16 = 0.257774
+cycles: 131072
+Realtime program time for 2^17: 0.000336 seconds
+Realtime program time for 2^17 = 0.335664
+cycles: 262144
+Realtime program time for 2^18: 0.000690 seconds
+Realtime program time for 2^18 = 0.689748
+cycles: 524288
+Realtime program time for 2^19: 0.001312 seconds
+Realtime program time for 2^19 = 0.1312039
+cycles: 1048576
+Realtime program time for 2^20: 0.002551 seconds
+Realtime program time for 2^20 = 0.2550920
+cycles: 2097152
+Realtime program time for 2^21: 0.005079 seconds
+Realtime program time for 2^21 = 0.5079442
+cycles: 4194304
+Realtime program time for 2^22: 0.009123 seconds
+Realtime program time for 2^22 = 0.9122697
+cycles: 8388608
+Realtime program time for 2^23: 0.018709 seconds
+Realtime program time for 2^23 = 0.18708996
+cycles: 16777216
+Realtime program time for 2^24: 0.021558 seconds
+Realtime program time for 2^24 = 0.21557977
+cycles: 33554432
+Realtime program time for 2^25: 0.038702 seconds
+Realtime program time for 2^25 = 0.38702410
+cycles: 67108864
+Realtime program time for 2^26: 0.073936 seconds
+Realtime program time for 2^26 = 0.73935654
+cycles: 134217728
+Realtime program time for 2^27: 0.148244 seconds
+Realtime program time for 2^27 = 0.148243535
+cycles: 268435456
+Realtime program time for 2^28: 0.325534 seconds
+Realtime program time for 2^28 = 0.325533752
+cycles: 536870912
+Realtime program time for 2^29: 0.576931 seconds
+Realtime program time for 2^29 = 0.576930723
+cycles: 1073741824
+Realtime program time for 2^30: 1.152769 seconds
+Realtime program time for 2^30 = 1.152768559
+cycles: 2147483648
+Realtime program time for 2^31: 2.289554 seconds
+Realtime program time for 2^31 = 2.289553600
+cycles: 4294967296
+Realtime program time for 2^32: 24.527380 seconds
+Realtime program time for 2^32 = 24.527379548

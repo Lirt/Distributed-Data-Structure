@@ -47,26 +47,27 @@ double sum_time(time_t sec, long nsec) {
 
 int main(int argc, char** argv) {
 
-  unsigned int lowRange, highRange;
+  /*unsigned int lowRange, highRange;
   lowRange = 1;
-  highRange = 50;
+  highRange = 50;*/
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
 
 	for (int i = 0; i < 50; i++) {
-    int *rn = generateRandomNumber(lowRange, highRange);
+    //int *rn = generateRandomNumber(lowRange, highRange);
     clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
     unsigned long p = (unsigned long) pow(2, i);
-		printf("num: %ld\n", p);
+		printf("cycles: %ld\n", p);
     for (int j = 0; j < p; j++) {
+			log((double) j);
     }
 
     clock_gettime(CLOCK_REALTIME, tp_rt_end);
 	  double sum_rt_time = sum_time(time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec);
-	  printf("Realtime program time for %d^2: %lf seconds\n", sum_rt_time);
-    printf("Realtime program time for %d^2 = %lu.%lu\n", i, time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
+	  printf("Realtime program time for 2^%d: %lf seconds\n", i, sum_rt_time);
+    printf("Realtime program time for 2^%d = %lu.%lu\n", i, time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
     
   }
 

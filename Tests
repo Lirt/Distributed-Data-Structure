@@ -43,3 +43,64 @@ log_debug3892:
 
 gdb --args queue_tester_callback_2 -d 300 -q 2 -l false --q1-ratio=0 --q2-ratio=0 --q3-ratio=1 --q4-ratio=1
 ./queue_tester_callback_2 -d 300 -q 4 -l false --q1-ratio=0 --q2-ratio=0 --q3-ratio=0 --q4-ratio=0
+
+
+
+#Test basic queue functionality and performance
+bin/queue_tester_rand_computation_debug -d 30 -q 1 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+bin/queue_tester_rand_computation_debug -d 100 -q 1 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+bin/queue_tester_rand_computation_debug -d 360 -q 1 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+
+
+#Test computation load via ratios
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l false --q1-ratio=15 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l false --q1-ratio=15 --q2-ratio=15 --q3-ratio=1 --q4-ratio=1
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l false --q1-ratio=15 --q2-ratio=15 --q3-ratio=15 --q4-ratio=1
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l false --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16
+
+#Test STATIC local thresholds for EQUAL local balancing
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 --local-threshold-type=static --local-threshold-static=??? local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=8 --q2-ratio=8 --q3-ratio=8 --q4-ratio=8 --local-threshold-type=static --local-threshold-static=800 local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=static --local-threshold-static=800 local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=static --local-threshold-static=800 local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=static --local-threshold-static=800 local-balance-type=all
+
+#Test STATIC local thresholds for PAIR local balancing
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 --local-threshold-type=static --local-threshold-static=??? local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=8 --q2-ratio=8 --q3-ratio=8 --q4-ratio=8 --local-threshold-type=static --local-threshold-static=800 local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=static --local-threshold-static=800 local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=static --local-threshold-static=800 local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=static --local-threshold-static=800 local-balance-type=pair
+
+
+#Test PERCENTAGE local thresholds for PAIR local balancing
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=8 --q2-ratio=8 --q3-ratio=8 --q4-ratio=8 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=all
+
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=8 --q2-ratio=8 --q3-ratio=8 --q4-ratio=8 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-threshold-percent=8 local-balance-type=pair
+
+#Test DYNAMIC local thresholds for PAIR local balancing
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 --local-threshold-type=dynamic local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=8 --q2-ratio=8 --q3-ratio=8 --q4-ratio=8 --local-threshold-type=percent local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-balance-type=all
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-balance-type=all
+
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1 --local-threshold-type=percent local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=8 --q2-ratio=8 --q3-ratio=8 --q4-ratio=8 --local-threshold-type=percent local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-balance-type=pair
+bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent local-balance-type=pair
+
+#Test lo
+    { "local-threshold-type",     154, "static/percent/dynamic", 0, "Choses local threshold type", 2},
+    { "local-balance-type",       155, "all/pair", 0, "Choses local balancing type. Type all balances all queues to same size. \
+    Type Pair balances only queue with lowest size with highest size queue.", 2},

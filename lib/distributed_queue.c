@@ -145,7 +145,9 @@ unsigned int threshold_type = 0;
 
 atomic_ulong rm_count;         //stores per queue amount of removes per second
 atomic_ulong rm_count_last;    //stores per queue amount of removes from last second
-pthread_t remove_count_nuller_t;       //swaps rm_count of every queue every second to rm_count_last and nulls rm_count
+atomic_ulong ins_count;         //stores per queue amount of removes per second
+atomic_ulong rm_count_last;    //stores per queue amount of removes from last second
+pthread_t per_time_statistics_reseter_t;       //swaps rm_count of every queue every second to rm_count_last and nulls rm_count
 
 long *load_bal_src;
 long *load_bal_dest;
@@ -770,9 +772,9 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
    * Init remove count nuller
    */
 
-  rc = pthread_create(&remove_count_nuller_t, &attr, remove_count_nuller, NULL);
+  rc = pthread_create(&per_time_statistics_reseter_t, &attr, per_time_statistics_reseter, NULL);
   if (rc) {
-    fprintf(stderr, "ERROR: (init remove_count_nuller) return code from pthread_create() is %d\n", rc);
+    fprintf(stderr, "ERROR: (init per_time_statistics_reseter) return code from pthread_create() is %d\n", rc);
     LOG_ERR_T( (long) -1, "Pthread create failed\n");
     exit(-1);
   }
@@ -853,7 +855,8 @@ void lockfree_queue_insert_item (void* val) {
    
    //increment Q size
    atomic_fetch_add( &(q->a_qsize), 1);
-   
+   atomic_fetch_add(&ins_count, 1);
+
    //cleanup
    while ( q->head != q->divider ) {
       tmp = q->head;
@@ -861,7 +864,7 @@ void lockfree_queue_insert_item (void* val) {
       //free(tmp->val); //allocated in main - can not free here
       free(tmp);
    }
-   
+
    pthread_mutex_unlock(&add_mutexes[tid]);
 }
 
@@ -981,7 +984,8 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
    
    //increment Q size
    atomic_fetch_add( &(q->a_qsize), item_count);
-   
+  atomic_fetch_add(&ins_count, item_count);
+
    //cleanup   
    struct lockfree_queue_item *tmp;
    while ( q->head != q->divider ) {
@@ -2003,7 +2007,7 @@ void lockfree_queue_stop_watcher() {
     pthread_join(qsize_watcher_t, NULL);
   }
   flag_graceful_stop = true;  //for remove count nuller
-  pthread_join(remove_count_nuller_t, NULL);
+  pthread_join(per_time_statistics_reseter_t, NULL);
   pthread_join(listener_global_size_t, NULL);
 
   LOG_INFO_TD("STATISTICS: \n\tQsize watcher was called %lu times\n\tLoad balance was called from remove %lu times\
@@ -2081,7 +2085,7 @@ long find_max_element_index(unsigned long *array, unsigned long len) {
    return index;
 }
 
-void* remove_count_nuller(void *arg) {
+void* per_time_statistics_reseter(void *arg) {
 
   //TODO TEST
 
@@ -2091,7 +2095,14 @@ void* remove_count_nuller(void *arg) {
       break;
     }
     atomic_store(&rm_count_last, atomic_load(&rm_count));
+    atomic_store(&ins_count_last, atomic_load(&ins_count));
+    for (int i = 0; i < queue_count; i++) {
+      LOG_INFO_TD("Queue[%d] size is %ld", (long) i, lockfree_queue_size_by_tid(i));
+    }
+    LOG_INFO_TD("Total removes per second=%ld in time=%d\n", atomic_load(&rm_count_last), (int) time(NULL));
+    LOG_INFO_TD("Total inserts per second=%ld in time=%d\n", atomic_load(&ins_count_last), (int) time(NULL));
     atomic_store(&rm_count, 0);
+    atomic_store(&ins_count, 0);
   }
   return NULL;
 }
