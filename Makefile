@@ -53,7 +53,7 @@ tester_equal: obj/distributed_queue.o obj/distributed_queue_debug.o obj/queue_te
 	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_equal.o -o bin/queue_tester_equal $(LINK)
 
 tester_rand_comp: obj/distributed_queue.o obj/distributed_queue_debug.o obj/queue_tester_rand_computation.o obj/queue_tester_rand_computation_debug.o
-	$(CC) $(CFLAGS) $(DEB) obj/distributed_queue_debug.o obj/queue_tester_rand_computation_debug.o -o bin/queue_tester_rand_computation_debug.o $(LINK)
+	$(CC) $(CFLAGS) $(DEB) obj/distributed_queue_debug.o obj/queue_tester_rand_computation_debug.o -o bin/queue_tester_rand_computation_debug $(LINK)
 	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_rand_computation.o -o bin/queue_tester_rand_computation $(LINK)
 
 clean:

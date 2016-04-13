@@ -1,0 +1,519 @@
+$ bin/queue_tester_rand_computation -d 100 -q 1 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+[INFO]: Total removed items 162001573
+[INFO]: Final realtime program time = 99.780181751
+[INFO]: Final process time = 195.349075073
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 52409 times
+
+   
+---------
+$ bin/queue_tester_rand_computation -d 100 -q 4 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+Total removed items 175223541
+[INFO]: Final realtime program time = 99.392384504
+[INFO]: Final process time = 329.407457136
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 525495 times
+   Global balance was initiated 0 times
+   Local balance moved 48224082 items
+[INFO]:   Total realtime spent in load balancer: 8.047600 seconds
+   Total Thread time spent in load balancer: 6.790306 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 second
+   
+
+---------
+$ bin/queue_tester_rand_computation -d 30 -q 4 -l false --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16
+[INFO]: Total removes per second=328510
+[INFO]: Total inserts per second=2598793
+[INFO]: Total removed items 77169740
+[INFO]: Final realtime program time = 189.642993801
+[INFO]: Final process time = 749.646463060
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 11 times
+   Global balance was initiated 0 times
+   Local balance moved 238342 items
+[INFO]:   Total realtime spent in load balancer: 0.002252 seconds
+   Total Thread time spent in load balancer: 0.002250 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+bin/queue_tester_rand_computation -d 30 -q 4 -l false --q1-ratio=10 --q2-ratio=10 --q3-ratio=10 --q4-ratio=10
+[INFO]: Total removes per second=1798149
+[INFO]: Total inserts per second=2084228
+[INFO]: Total removed items 60161306
+[INFO]: Final realtime program time = 32.143938479
+[INFO]: Final process time = 115.976881607
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 27 times
+   Global balance was initiated 0 times
+   Local balance moved 176767 items
+[INFO]:   Total realtime spent in load balancer: 0.009676 seconds
+   Total Thread time spent in load balancer: 0.009489 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+
+   
+---------
+$ bin/queue_tester_rand_computation -d 30 -q 4 -l false --q1-ratio=5 --q2-ratio=5 --q3-ratio=5 --q4-ratio=5
+[INFO]: Total removes per second=1895338
+[INFO]: Total inserts per second=1895649
+[INFO]: Total removed items 56569610
+   Final realtime program time = 29.884956514
+[INFO]: Final process time = 111.504862694
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 118809 times
+   Global balance was initiated 0 times
+   Local balance moved 12327209 items
+[INFO]:   Total realtime spent in load balancer: 1.657028 seconds
+   Total Thread time spent in load balancer: 1.496542 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+
+   
+---------
+$ bin/queue_tester_rand_computation -d 30 -q 4 -l false --q1-ratio=1 --q2-ratio=1 --q3-ratio=1 --q4-ratio=1
+[INFO]: Total removes per second=1861830
+[INFO]: Total inserts per second=1858326
+[INFO]: Total removed items 55488954
+[INFO]: Final realtime program time = 29.866334902
+[INFO]: Final process time = 109.37343427
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 208300 times
+   Global balance was initiated 0 times
+   Local balance moved 15056729 items
+[INFO]:   Total realtime spent in load balancer: 2.754668 seconds
+   Total Thread time spent in load balancer: 2.465274 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+$ bin/queue_tester_rand_computation -d 30 -q 4 -l false --q1-ratio=8 --q2-ratio=8 --q3-ratio=8 --q4-ratio=8
+[INFO]: Total removes per second=1885020
+[INFO]: Total inserts per second=1995489
+[INFO]: Total removed items 58155038
+[INFO]: Final realtime program time = 30.551686869
+[INFO]: Final process time = 116.418320007
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 416 times
+   Global balance was initiated 0 times
+   Local balance moved 859398 items
+[INFO]:   Total realtime spent in load balancer: 0.049102 seconds
+   Total Thread time spent in load balancer: 0.046313 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l false --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=9
+[INFO]: Total removes per second=1848081
+[INFO]: Total inserts per second=1991508
+[INFO]: Total removed items 118385704
+[INFO]: Final realtime program time = 61.706827844
+[INFO]: Final process time = 235.290991142
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 16 times
+   Global balance was initiated 0 times
+   Local balance moved 68664 items
+[INFO]:   Total realtime spent in load balancer: 0.009839 seconds
+   Total Thread time spent in load balancer: 0.002291 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=9 --local-threshold-type=static --local-threshold-static=800 --local-balance-type=all
+[INFO]: Total removes per second=1692791
+[INFO]: Total inserts per second=1744682
+[INFO]: Total removed items 103255767
+Final realtime program time = 59.925050853
+[INFO]: Final process time = 224.418419123
+[INFO]: STATISTICS:
+   Qsize watcher was called 92 times
+   Load balance was called from remove 47 times
+   Global balance was initiated 0 times
+   Local balance moved 1933662 items
+[INFO]:   Total realtime spent in load balancer: 0.206290 seconds
+   Total Thread time spent in load balancer: 0.129470 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=9 --local-threshold-type=static --local-threshold-static=3000 --local-balance-type=all
+[INFO]: Total removes per second=1759416
+[INFO]: Total inserts per second=1786257
+[INFO]: Total removed items 105464138
+[INFO]: Final realtime program time = 60.353666744
+[INFO]: Final process time = 229.66510441
+[INFO]: STATISTICS:
+   Qsize watcher was called 163 times
+   Load balance was called from remove 37 times
+   Global balance was initiated 0 times
+   Local balance moved 2303528 items
+[INFO]:   Total realtime spent in load balancer: 0.202642 seconds
+   Total Thread time spent in load balancer: 0.146144 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=9 --local-threshold-type=static --local-threshold-static=15000 --local-balance-type=all
+[INFO]: Total removes per second=1788227
+[INFO]: Total inserts per second=1769810
+[INFO]: Total removed items 104437617
+[INFO]: Final realtime program time = 59.768368414
+[INFO]: Final process time = 226.772802182
+[INFO]: STATISTICS:
+   Qsize watcher was called 128 times
+   Load balance was called from remove 105 times
+   Global balance was initiated 0 times
+   Local balance moved 1413989 items
+[INFO]:   Total realtime spent in load balancer: 0.203042 seconds
+   Total Thread time spent in load balancer: 0.092349 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=9 --local-threshold-type=static --local-threshold-static=60000 --local-balance-type=all
+[INFO]: Total removes per second=1661085
+[INFO]: Total inserts per second=1768203
+[INFO]: Total removed items 104560704
+[INFO]: Final realtime program time = 60.429179337
+[INFO]: Final process time = 227.415766714
+[INFO]: STATISTICS: 
+  Qsize watcher was called 119 times
+  Load balance was called from remove 11 times    
+  Global balance was initiated 0 times
+  Local balance moved 1617103 items
+[INFO]:   Total realtime spent in load balancer: 0.177984 seconds    
+  Total Thread time spent in load balancer: 0.109678 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+  
+  
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=9 --local-threshold-type=static --local-threshold-static=180000 --local-balance-type=all
+[INFO]: Total removes per second=1682506
+[INFO]: Total inserts per second=1708697
+[ERROR]: (T[-2] 1460497397 lib/distributed_queue.c:1233: Errno: 'Numerical result out of range'): Cannot move more items(1) than queue size(0)
+[INFO]: Total removed items 104693587
+[INFO]: Final realtime program time = 60.421760615
+[INFO]: Final process time = 228.523839141
+[INFO]: STATISTICS: 
+  Qsize watcher was called 114 times
+  Load balance was called from remove 27 times    
+  Global balance was initiated 0 times
+  Local balance moved 1686352 items
+[INFO]:   Total realtime spent in load balancer: 0.191718 seconds    
+  Total Thread time spent in load balancer: 0.123074 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+  
+  
+---------  
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=static --local-threshold-static=180000 --local-balance-type=all
+[INFO]: Total removes per second=1544505
+[INFO]: Total inserts per second=1909040
+[INFO]: Total removed items 114844228
+[INFO]: Final realtime program time = 72.431605577
+[INFO]: Final process time = 277.796741790
+[INFO]: STATISTICS:
+   Qsize watcher was called 14 times
+   Load balance was called from remove 53 times
+   Global balance was initiated 0 times
+   Local balance moved 15288371 items
+[INFO]:   Total realtime spent in load balancer: 0.234464 seconds
+   Total Thread time spent in load balancer: 0.220836 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+
+
+---------  
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l false --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13
+[INFO]: Total removes per second=1684799
+[INFO]: Total inserts per second=2175570
+[INFO]: Total removed items 128791904
+[INFO]: Final realtime program time = 71.285432955
+[INFO]: Final process time = 272.715468013
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 15 times
+   Global balance was initiated 0 times
+   Local balance moved 12579584 items
+[INFO]:   Total realtime spent in load balancer: 0.156619 seconds
+   Total Thread time spent in load balancer: 0.156597 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 2 -l false --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13
+[INFO]: Total removes per second=1783532
+[INFO]: Total inserts per second=1925834   
+[INFO]: Total removed items 111852657
+[INFO]: Final realtime program time = 61.592908136
+[INFO]: Final process time = 223.805609936
+[INFO]: STATISTICS:
+   Qsize watcher was called 0 times
+   Load balance was called from remove 37 times
+   Global balance was initiated 0 times
+   Local balance moved 104102 items
+[INFO]:   Total realtime spent in load balancer: 0.007300 seconds
+   Total Thread time spent in load balancer: 0.007160 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=static --local-threshold-static=180000 --local-balance-type=all
+[INFO]: Total removes per second=1551182
+[INFO]: Total inserts per second=1874641
+[INFO]: Total removed items 111076364
+Final realtime program time = 71.659251352
+[INFO]: Final process time = 267.973984450
+[INFO]: STATISTICS:
+   Qsize watcher was called 29 times
+   Load balance was called from remove 26 times
+   Global balance was initiated 0 times
+   Local balance moved 13245475 items
+[INFO]:   Total realtime spent in load balancer: 0.239764 seconds
+   Total Thread time spent in load balancer: 0.224429 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+   Total thread time spent in global size: 0.000000 seconds
+   
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=percent --local-threshold-percent=8 --local-balance-type=all
+[INFO]: Total removes per second=1695399
+[INFO]: Total inserts per second=2125105
+[INFO]: Total removed items 126015047
+[INFO]: Final realtime program time = 70.42201095
+[INFO]: Final process time = 266.771894168
+[INFO]:   Qsize watcher all equal call count = 124308
+[INFO]: STATISTICS:
+  Qsize watcher was called 10 times
+  Load balance was called from remove 13 times
+  Global balance was initiated 0 times
+  Local balance moved 12366530 items
+[INFO]:   Total realtime spent in load balancer: 0.175725 seconds
+  Total Thread time spent in load balancer: 0.175691 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+  Total thread time spent in global size: 0.000000 seconds
+  
+  
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=percent --local-threshold-percent=50 --local-balance-type=all
+[INFO]: Total removes per second=1733887
+[INFO]: Total inserts per second=2141771
+[INFO]: Total removed items 126203580
+[INFO]: Final realtime program time = 69.350235681
+[INFO]: Final process time = 267.945538786
+[INFO]:   Qsize watcher all equal call count = 123929
+[INFO]: STATISTICS: 
+  Qsize watcher was called 8 times
+  Load balance was called from remove 17 times    
+  Global balance was initiated 0 times
+  Local balance moved 12071690 items
+[INFO]:   Total realtime spent in load balancer: 0.168236 seconds    
+  Total Thread time spent in load balancer: 0.168163 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+  
+   
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=percent --local-threshold-percent=15 --local-balance-type=all
+[INFO]: Total removes per second=1703266
+[INFO]: Total inserts per second=2131900
+[INFO]: Total removed items 128376687
+[INFO]: Final realtime program time = 69.952920006
+[INFO]: Final process time = 270.768517066
+[INFO]:   Qsize watcher all equal call count = 124364
+[INFO]: STATISTICS:
+  Qsize watcher was called 30 times
+  Load balance was called from remove 24 times
+  Global balance was initiated 0 times
+  Local balance moved 13553540 items
+[INFO]:   Total realtime spent in load balancer: 0.377336 seconds
+  Total Thread time spent in load balancer: 0.373930 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+  Total thread time spent in global size: 0.000000 seconds
+
+
+
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=percent --local-threshold-percent=70 --local-balance-type=all                       
+[INFO]: Total removes per second=1744344
+[INFO]: Total inserts per second=2141702
+[INFO]: Total removed items 128774368
+[INFO]: Final realtime program time = 69.816098273
+[INFO]: Final process time = 271.84909756
+[INFO]:   Qsize watcher all equal call count = 124606
+[INFO]: STATISTICS: 
+  Qsize watcher was called 2 times
+  Load balance was called from remove 18 times    
+  Global balance was initiated 0 times
+  Local balance moved 13963676 items
+[INFO]:   Total realtime spent in load balancer: 0.252123 seconds    
+  Total Thread time spent in load balancer: 0.249295 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+  
+  
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=10 --q2-ratio=10 --q3-ratio=10 --q4-ratio=10 --local-threshold-type=percent --local-threshold-percent=8 --local-balance-type=all
+[INFO]: Total removes per second=1791418
+[INFO]: Total inserts per second=2061619
+[INFO]: Total removed items 121937202
+[INFO]: Final realtime program time = 63.827056783
+[INFO]: Final process time = 248.381513308
+[INFO]:   Qsize watcher all equal call count = 114090
+[INFO]: STATISTICS: 
+  Qsize watcher was called 13 times
+  Load balance was called from remove 17 times    
+  Global balance was initiated 0 times
+  Local balance moved 283569 items
+[INFO]:   Total realtime spent in load balancer: 0.019419 seconds    
+  Total Thread time spent in load balancer: 0.011712 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+
+
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=10 --q2-ratio=10 --q3-ratio=10 --q4-ratio=10 --local-threshold-type=percent --local-threshold-percent=15 --local-balance-type=all
+[INFO]: Total removes per second=1769703
+[INFO]: Total inserts per second=2092000
+[INFO]: Total removed items 124761751
+[INFO]: Final realtime program time = 65.18201535
+[INFO]: Final process time = 252.559265695
+[INFO]:   Qsize watcher all equal call count = 116121
+[INFO]: STATISTICS: 
+  Qsize watcher was called 9 times
+  Load balance was called from remove 7 times    
+  Global balance was initiated 0 times
+  Local balance moved 310521 items
+[INFO]:   Total realtime spent in load balancer: 0.020975 seconds    
+  Total Thread time spent in load balancer: 0.012651 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+  
+  
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=10 --q2-ratio=10 --q3-ratio=10 --q4-ratio=10 --local-threshold-type=percent --local-threshold-percent=50 --local-balance-type=all
+[INFO]: Total removes per second=1785731
+[INFO]: Total inserts per second=2077453
+[INFO]: Total removed items 123997914
+[INFO]: Final realtime program time = 64.629225647
+[INFO]: Final process time = 251.455341414
+[INFO]:   Qsize watcher all equal call count = 115535
+[INFO]: STATISTICS:
+  Qsize watcher was called 4 times
+  Load balance was called from remove 8 times
+  Global balance was initiated 0 times
+  Local balance moved 153089 items
+[INFO]:   Total realtime spent in load balancer: 0.008913 seconds
+  Total Thread time spent in load balancer: 0.008077 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+  Total thread time spent in global size: 0.000000 seconds
+
+  
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=10 --q2-ratio=10 --q3-ratio=10 --q4-ratio=10 --local-threshold-type=percent --local-threshold-percent=70 --local-balance-type=all
+[INFO]: Total removes per second=1778062
+[INFO]: Total inserts per second=2053707
+[INFO]: Total removed items 123256644
+[INFO]: Final realtime program time = 64.364080897
+[INFO]: Final process time = 250.624258780
+[INFO]:   Qsize watcher all equal call count = 115246
+[INFO]: STATISTICS: 
+  Qsize watcher was called 3 times
+  Load balance was called from remove 52 times    
+  Global balance was initiated 0 times
+  Local balance moved 196122 items
+[INFO]:   Total realtime spent in load balancer: 0.013567 seconds    
+  Total Thread time spent in load balancer: 0.008514 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+
+
+---------
+bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=8 --q2-ratio=9 --q3-ratio=7 --q4-ratio=8 --local-threshold-type=static --local-threshold-static=60000 --local-balance-type=pair
+[INFO]: Total removes per second=1761460
+[INFO]: Total inserts per second=1864331
+[INFO]: Total removed items 108440364
+[INFO]: Final realtime program time = 59.245460977
+[INFO]: Final process time = 230.935119963
+[INFO]: STATISTICS: 
+  Qsize watcher was called 0 times
+  Load balance was called from remove 8566 times    
+  Global balance was initiated 0 times
+  Local balance moved 12395552 items
+[INFO]:   Total realtime spent in load balancer: 2.559159 seconds    
+  Total Thread time spent in load balancer: 0.000000 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds    
+  Total thread time spent in global size: 0.000000 seconds
+
+
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=8 --q2-ratio=9 --q3-ratio=8 --q4-ratio=8 --local-threshold-type=static --local-threshold-static=60000 --local-balance-type=pair
+[INFO]: Total removes per second=1789550
+[INFO]: Total inserts per second=1850892
+[INFO]: Total removed items 109136226
+[INFO]: Final realtime program time = 60.367591702
+[INFO]: Final process time = 235.531794685
+[INFO]:   T[7]: Removed items 28208566
+[INFO]: STATISTICS:
+  Qsize watcher was called 0 times
+  Load balance was called from remove 309 times
+  Global balance was initiated 0 times
+  Local balance moved 1745649 items
+[INFO]:   Total realtime spent in load balancer: 0.237130 seconds
+  Total Thread time spent in load balancer: 0.000000 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+  Total thread time spent in global size: 0.000000 seconds
+  
+  
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=static --local-threshold-static=180000 --local-balance-type=pair
+INFO]: Total removes per second=1556734
+[INFO]: Total inserts per second=1989910
+[INFO]: Total removed items 116787364
+[INFO]: Final realtime program time = 72.172502600
+[INFO]: [INFO]:   T[3]: Removed items 32076863
+[INFO]: Final process time = 279.794667398
+[INFO]: STATISTICS:
+  Qsize watcher was called 0 times
+  Load balance was called from remove 64 times
+  Global balance was initiated 0 times
+  Local balance moved 19147792 items
+[INFO]:   Total realtime spent in load balancer: 0.277996 seconds
+  Total Thread time spent in load balancer: 0.000000 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+  Total thread time spent in global size: 0.000000 seconds
+
+---------
+$ bin/queue_tester_rand_computation -d 60 -q 4 -l true --q1-ratio=9 --q2-ratio=9 --q3-ratio=9 --q4-ratio=13 --local-threshold-type=static --local-threshold-static=60000 --local-balance-type=pair
+[INFO]: Total removes per second=1621229
+[INFO]: Total inserts per second=1926067
+[INFO]: Total removed items 118363403
+[INFO]: Final realtime program time = 72.625679903
+[INFO]: Final process time = 284.235198969
+[INFO]: STATISTICS:
+  Qsize watcher was called 0 times
+  Load balance was called from remove 43 times
+  Global balance was initiated 0 times
+  Local balance moved 18944520 items
+[INFO]:   Total realtime spent in load balancer: 0.319121 seconds
+  Total Thread time spent in load balancer: 0.000000 seconds
+[INFO]:   Total realtime spent in global size: 0.000000 seconds
+  Total thread time spent in global size: 0.000000 seconds

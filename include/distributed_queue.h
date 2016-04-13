@@ -80,6 +80,7 @@ struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
 extern struct ds_lockfree_queue **queues;
 extern int queue_count; //number of created queues
 
+extern pthread_mutex_t local_queue_struct_mutex;
 extern pthread_mutex_t *add_mutexes;
 extern pthread_mutex_t *rm_mutexes;
 extern pthread_mutex_t load_balance_mutex;
@@ -96,15 +97,29 @@ extern long **tids;
 
 //TODO TEST
 #define LOCK_LOCAL_QUEUES() \
+  pthread_mutex_lock(&local_queue_struct_mutex); \
   for (int it = 0; it < queue_count; it++) { \
     pthread_mutex_lock(&add_mutexes[*tids[it]]); \
     pthread_mutex_lock(&rm_mutexes[*tids[it]]); \
+  }
+
+#define LOCK_LOCAL_QUEUES_EXCEPT_RM(Q) \
+  for (int it = 0; it < queue_count; it++) { \
+    pthread_mutex_lock(&add_mutexes[*tids[it]]); \
+    if (it != Q) pthread_mutex_lock(&rm_mutexes[*tids[it]]); \
   }
 
 #define UNLOCK_LOCAL_QUEUES() \
   for (int it = 0; it < queue_count; it++) { \
     pthread_mutex_unlock(&add_mutexes[*tids[it]]); \
     pthread_mutex_unlock(&rm_mutexes[*tids[it]]); \
+  } \
+  pthread_mutex_unlock(&local_queue_struct_mutex);
+
+#define UNLOCK_LOCAL_QUEUES_EXCEPT_RM(Q) \
+  for (int it = 0; it < queue_count; it++) { \
+    pthread_mutex_unlock(&add_mutexes[*tids[it]]); \
+    if (it != Q) pthread_mutex_unlock(&rm_mutexes[*tids[it]]); \
   }
 
 #define LOCK_LOAD_BALANCER() \
@@ -120,14 +135,14 @@ extern long **tids;
  */
 
 struct load_balancer_struct {
-  long pair[2];
   unsigned long *qsize_history;
+  long src_q;
 };
 
-typedef void* (*load_balancer_strategy)(void* arg);
-extern void* load_balancer_pair_balance(void* lb_struct); //arg=pair_balance_struct
-extern void* load_balancer_all_balance(void* qsize_history);  //arg=qsize_history
-load_balancer_strategy lbs;
+typedef int (*load_balancer_strategy)(void* arg);
+extern int load_balancer_pair_balance(void* lb_struct);
+extern int load_balancer_all_balance(void* lb_struct);
+extern load_balancer_strategy lbs;
 
 typedef void* (*qsize_watcher_strategy)();
 extern void* qsize_watcher_min_max_strategy();
@@ -164,8 +179,11 @@ extern void* comm_listener_global_size_consistent();
 
 extern double sum_time(time_t sec, long nsec);
 extern struct timespec *time_diff(struct timespec *start, struct timespec *end);
-extern void* remove_count_nuller(void *arg);
+extern void* per_time_statistics_reseter(void *arg);
+extern void* local_struct_cleanup();
 extern int  getInsertionTid();
 extern int  getRemovalTid();
+
+extern long find_largest_q();
 extern long find_max_element_index(unsigned long *array, unsigned long len);
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);

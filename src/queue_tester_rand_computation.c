@@ -429,11 +429,11 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
 
     case 155: {
       if ( strcmp(arg, "all") == 0 ) {
-        printf("OPT: Load balancing type set to static\n");
+        printf("OPT: Load balancing type set to balance all queues equal\n");
         local_balance_type_arg = 1;
       }
       else if ( strcmp(arg, "pair") == 0 ) {
-        printf("OPT: Load balancing type set to percent\n");
+        printf("OPT: Load balancing type set to balance between pairs of queue\n");
         local_balance_type_arg = 2;
       }
       else {

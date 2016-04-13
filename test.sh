@@ -40,6 +40,8 @@ for q in ${queues[@]}; do
 			grep -E "T\[[0-9]+\]\: Inserted" $logfile >> $resultfile
 			grep -E "T\[[0-9]+\]\: Removed" $logfile >> $resultfile
 			grep -E "Total removed items" $logfile >> $resultfile
+			grep -E "Total realtime spent in load balancer" $logfile >> $resultfile
+			grep -E "Total realtime spent in global size" $logfile >> $resultfile
 			grep -E "Final realtime program time" $logfile >> $resultfile
 			grep -E "Final process time" $logfile >> $resultfile
 			grep -E -A6 "STATISTICS\:" $logfile >> $resultfile
@@ -91,6 +93,8 @@ for q in ${queues[@]}; do
 					grep -E "ERROR" $logfile >> $resultfile
 					grep -E "T\[[0-9]+\]\: Inserted" $logfile >> $resultfile
 					grep -E "T\[[0-9]+\]\: Removed" $logfile >> $resultfile
+					grep -E "Total realtime spent in load balancer" $logfile >> $resultfile
+					grep -E "Total realtime spent in global size" $logfile >> $resultfile
 					grep -E "Total removed items" $logfile >> $resultfile
 					grep -E "Final realtime program time" $logfile >> $resultfile
 					grep -E "Final process time" $logfile >> $resultfile
