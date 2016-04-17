@@ -22,26 +22,30 @@ extern FILE *log_file_lb;
 	#define LOG_DEBUG_TD(THREAD, MESSAGE, ...) \
 		fprintf(log_file_debug, "[DEBUG]: %d %s:%d: Thread[%ld]: ", \
 			GET_TIME_INT(), __FILE__, __LINE__, THREAD); \
-		fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__)
+		fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__); \
+		fflush(log_file_debug)
 
 	#define LOAD_BALANCE_LOG_DEBUG_T(TIME, MESSAGE, ...) fprintf(log_file_lb, "[LB DEBUG]: (%s %s:%d): %s \n", \
 		TIME, __FILE__, __LINE__, MESSAGE, ##__VA_ARGS__)
 	#define LOAD_BALANCE_LOG_DEBUG_TD(MESSAGE, ...) \
 		fprintf(log_file_lb, "[LB DEBUG]: (%d %s:%d): ", \
 			GET_TIME_INT(), __FILE__, __LINE__); \
-		fprintf(log_file_lb, MESSAGE, ##__VA_ARGS__)
+		fprintf(log_file_lb, MESSAGE, ##__VA_ARGS__); \
+		fflush(log_file_lb)
 
 	#define QSIZE_WATCHER_LOG_DEBUG_T(TIME, MESSAGE, ...) fprintf(log_file_qw, "[LB DEBUG]: (%s %s:%d): %s \n", \
 		TIME, __FILE__, __LINE__, MESSAGE, ##__VA_ARGS__)
 	#define QSIZE_WATCHER_LOG_DEBUG_TD(MESSAGE, ...) \
 		fprintf(log_file_qw, "[LB DEBUG]: (%d %s:%d): ", \
 			GET_TIME_INT(), __FILE__, __LINE__); \
-		fprintf(log_file_qw, MESSAGE, ##__VA_ARGS__)
+		fprintf(log_file_qw, MESSAGE, ##__VA_ARGS__); \
+		fflush(log_file_qw)
 	
 	#define GLOBAL_COMM_LOG_DEBUG_TD(RANK, MESSAGE, ...) \
 		fprintf(log_file_global_comm, "[GLOBAL COMMUNICATION]: (%d %s:%d): RANK[%d]: ", \
 			GET_TIME_INT(), __FILE__, __LINE__, RANK); \
-		fprintf(log_file_global_comm, MESSAGE, ##__VA_ARGS__)
+		fprintf(log_file_global_comm, MESSAGE, ##__VA_ARGS__); \
+		fflush(log_file_global_comm)
 
 	#define NUMBER_ADD_RM_FPRINTF(FILE, FILE_NAME, MESSAGE, ...) \
 		if ( fprintf(FILE, MESSAGE, ##__VA_ARGS__) < 0 ) \
@@ -67,24 +71,31 @@ extern FILE *log_file_lb;
 #define LOG_ERR_T(THREAD, MESSAGE, ...) \
 	fprintf(log_file_debug, "[ERROR]: (T[%ld] %d %s:%d: Errno: '%s'): ", \
 		THREAD, GET_TIME_INT(), __FILE__, __LINE__, CLEAN_ERRNO()); \
-	fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__)
+	fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__); \
+	fflush(log_file_debug)
 
 
 #define LOG_INFO(MESSAGE, ...) fprintf(log_file_debug, "[INFO]: (%s)\n", MESSAGE, ##__VA_ARGS__) 
 
 #define LOG_INFO_TD(MESSAGE, ...) \
 	fprintf(log_file_debug, "[INFO]: "); \
-	fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__)
+	fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__); \
+	fflush(log_file_debug)
 
 
 #define LOAD_BALANCE_LOG_INFO_TD(MESSAGE, ...) \
 	fprintf(log_file_lb, "[LB INFO]: "); \
-	fprintf(log_file_lb, MESSAGE, ##__VA_ARGS__)
+	fprintf(log_file_lb, MESSAGE, ##__VA_ARGS__); \
+	fflush(log_file_lb)
 
 #define QSIZE_WATCHER_LOG_INFO_TD(MESSAGE, ...) \
 	fprintf(log_file_qw, "[QW INFO]: "); \
-	fprintf(log_file_qw, MESSAGE, ##__VA_ARGS__)
+	fprintf(log_file_qw, MESSAGE, ##__VA_ARGS__); \
+	fflush(log_file_qw)
 	
 #define GLOBAL_COMM_LOG_INFO_TD(RANK, MESSAGE, ...) \
 	fprintf(log_file_global_comm, "[GC INFO]: RANK[%d]: ", RANK); \
-	fprintf(log_file_global_comm, MESSAGE, ##__VA_ARGS__)
+	fprintf(log_file_global_comm, MESSAGE, ##__VA_ARGS__); \
+	fflush(log_file_global_comm)
+
+

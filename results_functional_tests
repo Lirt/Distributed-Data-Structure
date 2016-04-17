@@ -489,7 +489,6 @@ INFO]: Total removes per second=1556734
 [INFO]: Total inserts per second=1989910
 [INFO]: Total removed items 116787364
 [INFO]: Final realtime program time = 72.172502600
-[INFO]: [INFO]:   T[3]: Removed items 32076863
 [INFO]: Final process time = 279.794667398
 [INFO]: STATISTICS:
   Qsize watcher was called 0 times

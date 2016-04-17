@@ -69,10 +69,11 @@ struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
   #define DS_LOCKFREE_QUEUE
 	struct ds_lockfree_queue {
       //const int max;
-      atomic_ulong a_qsize;
-      struct lockfree_queue_item *head;
-      struct lockfree_queue_item *tail;
-      struct lockfree_queue_item *divider;
+    size_t item_size;
+    atomic_ulong a_qsize;
+    struct lockfree_queue_item *head;
+    struct lockfree_queue_item *tail;
+    struct lockfree_queue_item *divider;
 	};
 #endif 
 
@@ -95,7 +96,6 @@ extern long **tids;
  * MACROS
  */
 
-//TODO TEST
 #define LOCK_LOCAL_QUEUES() \
   pthread_mutex_lock(&local_queue_struct_mutex); \
   for (int it = 0; it < queue_count; it++) { \
@@ -149,6 +149,18 @@ extern void* qsize_watcher_min_max_strategy();
 extern void* qsize_watcher_local_threshold_strategy();
 extern qsize_watcher_strategy qw_strategy;
 
+
+typedef struct qsize_struct_sorted {
+  unsigned long size;
+  long index;
+} qsizes;
+
+typedef struct work_to_send_struct {
+  long send_count;  //how many dst nodes
+  long *dst_node_id;  //dst node ids
+  unsigned long *item_count;  //amount of items to send to node i
+} work_to_send;
+
 //extern void lockfree_queue_destroy(void);
 extern void lockfree_queue_free(void *tid);
 //extern unsigned long global_size();
@@ -187,3 +199,5 @@ extern int  getRemovalTid();
 extern long find_largest_q();
 extern long find_max_element_index(unsigned long *array, unsigned long len);
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);
+extern unsigned long* lockfree_queue_size_total_allarr_sorted();
+extern int qsize_comparator(const void *a, const void *b);
