@@ -123,7 +123,7 @@ void *work(void *arg_struct) {
 
   struct q_args *args = arg_struct;
   long *tid = args->tid;
-  unsigned long pthread_tid = pthread_self();
+  //unsigned long pthread_tid = pthread_self();
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
@@ -139,9 +139,9 @@ void *work(void *arg_struct) {
     * PRODUCER
     */
     unsigned long n_inserted = 0;
+    int *rn;
+
     if ( q_ratios[*tid / 2] == 0 ) {
-      fclose(work_file_ins);
-      fclose(work_file_rm);
       atomic_fetch_add( &finished, 1);
       LOG_INFO_TD("T[%ld]: Q ratio is 0\n", *tid);
       LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
@@ -161,7 +161,7 @@ void *work(void *arg_struct) {
         continue;
 
       atomic_fetch_add( &total_inserts, 1);
-      n_inserted++
+      n_inserted++;
 
       if ( atomic_load(&total_inserts) > 100000000 ) {
         atomic_fetch_sub( &total_inserts, 1);
@@ -174,9 +174,6 @@ void *work(void *arg_struct) {
           LOG_INFO_TD("Final inset realtime program time = %lu.%lu\n", 
             time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
         }
-
-        fclose(work_file_ins);
-        fclose(work_file_rm);
 
         return NULL;
       }
@@ -210,7 +207,7 @@ void *work(void *arg_struct) {
       if (retval == NULL) {
         unsigned long size = lockfree_queue_size_total();
         if (size == 0) {
-          unsigned long size = lockfree_queue_size_total_consistent(void);
+          unsigned long size = lockfree_queue_size_total_consistent();
           if (size != 0) {
             continue;
           }
@@ -220,13 +217,10 @@ void *work(void *arg_struct) {
           LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed);
 
           if ( *tid / 2 == 0) {
-            LOG_INFO_TD(*tid, "Total removed items %lu\n", atomic_load(&total_removes));
-            LOG_INFO_TD(*tid, "Final remove realtime program time = %lu.%lu\n", 
+            LOG_INFO_TD("Total removed items %lu\n", atomic_load(&total_removes));
+            LOG_INFO_TD("Final remove realtime program time = %lu.%lu\n", 
               time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
           }
-
-          fclose(work_file_ins);
-          fclose(work_file_rm);
 
           if ( (long) (*tid / 2) == 0 ) {
             lockfree_queue_stop_watcher();
@@ -241,6 +235,9 @@ void *work(void *arg_struct) {
       }
     }
   }
+
+  return NULL;
+
 }
 
 static int parse_opt (int key, char *arg, struct argp_state *state) {
