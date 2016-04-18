@@ -239,7 +239,7 @@ void *work(void *arg_struct) {
       if (retval == NULL) {
         unsigned long size = lockfree_queue_size_total_consistent();
         if (size == 0) {
-          unsigned long global_size_val = global_size();
+          unsigned long global_size_val = global_size(true);
           
           if ( global_size_val == 0 ) {
             unsigned long fin = atomic_load( &finished );
@@ -278,10 +278,6 @@ void *work(void *arg_struct) {
 
               fclose(work_file_ins);
               fclose(work_file_rm);
-
-              //TODO!!!
-              //TODO USE GLOBAL SIZE INSTEAD OF LOCAL BECAUSE YOU CAN KILL PROCESS EVEN COMPUTATION IS NOT DONE
-              sleep(10);
 
               //lockfree_queue_destroy();
               //TODO Pthread Cleanup and destroy method

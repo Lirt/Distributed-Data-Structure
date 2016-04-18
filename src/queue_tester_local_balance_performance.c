@@ -135,13 +135,27 @@ void *work(void *arg_struct) {
   }
 
   if ( *tid % 2 == 0 ) {
-    /*
-     * PRODUCER
-     */
-     unsigned long n_inserted = 0;
+   /*
+    * PRODUCER
+    */
+    unsigned long n_inserted = 0;
+    if ( q_ratios[*tid / 2] == 0 ) {
+      fclose(work_file_ins);
+      fclose(work_file_rm);
+      atomic_fetch_add( &finished, 1);
+      LOG_INFO_TD("T[%ld]: Q ratio is 0\n", *tid);
+      LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+      return NULL;
+    }
 
     while(1) {
       //Start producing items
+
+      unsigned long p = (unsigned long) pow(2, q_ratios[*tid / 2]);
+      for (int j = 0; j < p; j++) {
+        log((double) j);
+      }
+
       rn = generateRandomNumber(0, 100);
       if (rn == NULL)
         continue;
@@ -473,11 +487,11 @@ int main(int argc, char** argv) {
 
   /*
    * USAGE 
-   * queue_tester_remove_performance -d 0 -q 1 -l false
-   * queue_tester_remove_performance -d 0 -q 2 -l false
-   * queue_tester_remove_performance -d 0 -q 4 -l false
-   * queue_tester_remove_performance -d 0 -q 8 -l false
-   * queue_tester_remove_performance -d 0 -q 16 -l false
+   * queue_tester_local_balance_performance -d 0 -q 1 -l false --local-balance-type pair/all --q1-ratio=0 q2-ratio=0
+   * queue_tester_local_balance_performance -d 0 -q 2 -l false
+   * queue_tester_local_balance_performance -d 0 -q 4 -l false
+   * queue_tester_local_balance_performance -d 0 -q 8 -l false
+   * queue_tester_local_balance_performance -d 0 -q 16 -l false
    */
 
 

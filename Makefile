@@ -1,3 +1,5 @@
+
+# USE export LDFLAGS="$LDFLAGS -lm" !!
 MPICC=mpicc -cc=/usr/local/bin/gcc
 GCC=/usr/local/bin/gcc
 #CC=$(GCC)
@@ -10,7 +12,8 @@ WARN=-Wall
 STD=-std=c11
 PTHREAD=-pthread
 #PTHREAD=-lpthread
-CFLAGS=$(STD) $(WARN) $(DEBUG) $(PTHREAD) -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=500
+CFLAGS=$(STD) $(WARN) $(DEBUG) $(PTHREAD) -D_POSIX_C_SOURCE=199309L -D_XOPEN_SOURCE=500 -Lobj/distributed_queue.o
+#-L/usr/local/lib/gcc/x86_64-unknown-linux-gnu/
 
 #LINK=
 #LINK=-lpthread
@@ -40,13 +43,22 @@ obj/queue_tester_rand_computation_debug.o: src/queue_tester_rand_computation.c
 obj/queue_tester_rand_computation.o: src/queue_tester_rand_computation.c
 	$(CC) $(CFLAGS) -c src/queue_tester_rand_computation.c -o obj/queue_tester_rand_computation.o $(LINK)
 
-all: obj/distributed_queue.o obj/queue_tester.o obj/queue_tester_equal.o obj/queue_tester_rand_computation obj/queue_tester_debug.o obj/queue_tester_equal_debug.o obj/queue_tester_rand_computation_debug
-	$(CC) $(CFLAGS) $DEB obj/distributed_queue_debug.o obj/queue_tester.o -o bin/queue_tester_debug $(LINK)
-	$(CC) $(CFLAGS) $DEB obj/distributed_queue_debug.o obj/queue_tester_equal.o -o bin/queue_tester_equal_debug $(LINK)
+obj/queue_tester_insert_performance.o: src/queue_tester_insert_performance.c
+	$(CC) $(CFLAGS) -c src/queue_tester_insert_performance.c -o obj/queue_tester_insert_performance.o $(LINK)
+
+obj/queue_tester_remove_performance.o: src/queue_tester_remove_performance.c
+	$(CC) $(CFLAGS) -c src/queue_tester_remove_performance.c -o obj/queue_tester_remove_performance.o $(LINK)
+
+obj/queue_tester_local_balance_performance.o: src/queue_tester_local_balance_performance.c
+	$(CC) $(CFLAGS) -c src/queue_tester_local_balance_performance.c -o obj/queue_tester_local_balance_performance.o $(LINK)
+
+all: obj/distributed_queue.o obj/queue_tester_rand_computation.o obj/queue_tester_rand_computation_debug.o obj/queue_tester_insert_performance.o obj/queue_tester_remove_performance.o obj/queue_tester_local_balance_performance.o 
 	$(CC) $(CFLAGS) $DEB obj/distributed_queue_debug.o obj/queue_tester_rand_computation.o -o bin/queue_tester_rand_computation_debug $(LINK)
-	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester.o -o bin/queue_tester $(LINK)
-	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_equal.o -o bin/queue_tester_equal $(LINK)
 	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_rand_computation.o -o bin/queue_tester_rand_computation $(LINK)
+	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_insert_performance.o -o bin/queue_tester_insert_performance $(LINK)
+	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_remove_performance.o -o bin/queue_tester_remove_performance $(LINK)
+	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_local_balance_performance.o -o bin/queue_tester_local_balance_performance $(LINK)
+
 
 tester_equal: obj/distributed_queue.o obj/distributed_queue_debug.o obj/queue_tester_equal.o obj/queue_tester_equal_debug.o
 	$(CC) $(CFLAGS) $(DEB) obj/distributed_queue_debug.o obj/queue_tester_equal_debug.o -o bin/queue_tester_equal_debug $(LINK)

@@ -123,7 +123,7 @@ void *work(void *arg_struct) {
 
   struct q_args *args = arg_struct;
   long *tid = args->tid;
-  unsigned long pthread_tid = pthread_self();
+  //unsigned long pthread_tid = pthread_self();
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
@@ -135,10 +135,11 @@ void *work(void *arg_struct) {
   }
 
   if ( *tid % 2 == 0 ) {
-    /*
-     * PRODUCER
-     */
-     unsigned long n_inserted = 0;
+   /*
+    * PRODUCER
+    */
+    unsigned long n_inserted = 0;
+    int *rn;
 
     while(1) {
       //Start producing items
@@ -147,7 +148,7 @@ void *work(void *arg_struct) {
         continue;
 
       atomic_fetch_add( &total_inserts, 1);
-      n_inserted++
+      n_inserted++;
 
       if ( atomic_load(&total_inserts) > 100000000 ) {
         atomic_fetch_sub( &total_inserts, 1);
@@ -160,9 +161,6 @@ void *work(void *arg_struct) {
             time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
         }
 
-        fclose(work_file_ins);
-        fclose(work_file_rm);
-
         if ( (long) *tid == 0 ) {
           lockfree_queue_stop_watcher();
         }
@@ -173,6 +171,9 @@ void *work(void *arg_struct) {
       }
     }
   }
+
+  return NULL;
+
 }
 
 static int parse_opt (int key, char *arg, struct argp_state *state) {

@@ -157,8 +157,8 @@ typedef struct qsize_struct_sorted {
 
 typedef struct work_to_send_struct {
   long send_count;  //how many dst nodes
-  long *dst_node_id;  //dst node ids
-  unsigned long *item_count;  //amount of items to send to node i
+  long *dst_node_ids;  //dst node ids
+  unsigned long *item_counts;  //amount of items to send to node i
 } work_to_send;
 
 //extern void lockfree_queue_destroy(void);
@@ -175,6 +175,7 @@ extern bool lockfree_queue_is_empty_all_consistent_local(void);
 //extern void lockfree_queue_insert_item(void *val);
 extern void lockfree_queue_insert_item_by_tid(void *tid, void *val);
 extern void lockfree_queue_insert_item_by_tid_no_lock(void *tid, void *val);
+extern void** lockfree_queue_remove_Nitems_to_arr(long qid, unsigned long item_cnt);
 //extern void lockfree_queue_insert_N_items(void** values, int item_count);
 //extern void* load_balancer_all_balance();
 extern void lockfree_queue_move_items(int q_id_from, int q_id_to, unsigned long count);
@@ -186,8 +187,9 @@ extern void* lockfree_queue_qsize_watcher();
 //extern void* lockfree_queue_remove_item(int timeout);
 extern void* lockfree_queue_remove_item_by_tid(void *tid, int timeout);
 extern void* lockfree_queue_remove_item_by_tid_no_lock(void *tid, int timeout);
+extern int global_balance(long tid);
 extern void* comm_listener_global_balance();
-extern void* comm_listener_global_size_consistent();
+extern void* comm_listener_global_size();
 
 extern double sum_time(time_t sec, long nsec);
 extern struct timespec *time_diff(struct timespec *start, struct timespec *end);
@@ -196,8 +198,12 @@ extern void* local_struct_cleanup();
 extern int  getInsertionTid();
 extern int  getRemovalTid();
 
+extern int send_data(int dst, unsigned long count);
+extern int node_receive_count(int node_id, work_to_send *wts);
+extern unsigned long sum_arr(unsigned long *arr, unsigned long len);
+extern long maxdiff_q(void* qid);
 extern long find_largest_q();
 extern long find_max_element_index(unsigned long *array, unsigned long len);
 extern int* find_max_min_element_index(unsigned long *array, unsigned long len);
-extern unsigned long* lockfree_queue_size_total_allarr_sorted();
+extern qsizes* lockfree_queue_size_total_allarr_sorted();
 extern int qsize_comparator(const void *a, const void *b);
