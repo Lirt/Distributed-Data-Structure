@@ -99,3 +99,40 @@ bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=8 --q2-r
 bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=16 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent --local-balance-type=pair
 bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=16 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent --local-balance-type=pair
 bin/queue_tester_rand_computation_debug -d 100 -q 4 -l true  --q1-ratio=1 --q2-ratio=1 --q3-ratio=16 --q4-ratio=16 --local-threshold-type=percent --local-balance-type=pair
+
+
+#NEW
+#2CPU + HT
+#
+Distributed queues in shared memory: multicore performance and scalability through quantitative relaxation
+./bin/queue_tester_rand_computation -d 10 -q 1 -l false --q1-ins-ratio=1 --q1-rm-ratio=1
+
+./bin/queue_tester_rand_computation -d 10 -q 2 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q1-rm-ratio=1 --q2-rm-ratio=1 --local-balance-type=all
+./bin/queue_tester_rand_computation -d 10 -q 2 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q1-rm-ratio=1 --q2-rm-ratio=1 --local-balance-type=pair
+
+./bin/queue_tester_rand_computation -d 10 -q 2 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q1-rm-ratio=0 --q2-rm-ratio=1 --local-balance-type=all
+./bin/queue_tester_rand_computation -d 10 -q 2 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q1-rm-ratio=0 --q2-rm-ratio=1 --local-balance-type=pair
+
+./bin/queue_tester_rand_computation -d 10 -q 4 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q3-ins-ratio=1 --q4-ins-ratio=1 --q1-rm-ratio=0 --q2-rm-ratio=1 --q3-rm-ratio=1 --q4-rm-ratio=1 --local-balance-type=all
+./bin/queue_tester_rand_computation -d 10 -q 4 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q3-ins-ratio=1 --q4-ins-ratio=1 --q1-rm-ratio=0 --q2-rm-ratio=0 --q3-rm-ratio=1 --q4-rm-ratio=1 --local-balance-type=all
+./bin/queue_tester_rand_computation -d 10 -q 4 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q3-ins-ratio=1 --q4-ins-ratio=1 --q1-rm-ratio=0 --q2-rm-ratio=1 --q3-rm-ratio=1 --q4-rm-ratio=1 --local-balance-type=pair
+./bin/queue_tester_rand_computation -d 10 -q 4 -l false --q1-ins-ratio=1 --q2-ins-ratio=1 --q3-ins-ratio=1 --q4-ins-ratio=1 --q1-rm-ratio=0 --q2-rm-ratio=0 --q3-rm-ratio=0 --q4-rm-ratio=1 --local-balance-type=pair
+
+./bin/queue_tester_insert_performance -q 1 -a 80000000 #TEST WITH DIFFERENT INSERT METHODS
+./bin/queue_tester_insert_performance -q 2 -a 80000000
+./bin/queue_tester_insert_performance -q 4 -a 80000000
+./bin/queue_tester_insert_performance -q 8 -a 80000000
+./bin/queue_tester_insert_performance -q 16 -a 80000000
+./bin/queue_tester_insert_performance -q 1 -d 7
+./bin/queue_tester_insert_performance -q 2 -d 7
+./bin/queue_tester_insert_performance -q 4 -d 7
+./bin/queue_tester_insert_performance -q 8 -d 7
+./bin/queue_tester_insert_performance -q 16 -d 7
+
+./bin/queue_tester_remove_performance -q 1 -a 80000000
+./bin/queue_tester_remove_performance -q 2 -a 80000000
+./bin/queue_tester_remove_performance -q 4 -a 80000000
+./bin/queue_tester_remove_performance -q 8 -a 80000000
+./bin/queue_tester_remove_performance -q 16 -a 80000000
+./bin/queue_tester_remove_performance -q 32 -a 80000000
+./bin/queue_tester_remove_performance -q 64 -a 80000000

@@ -71,7 +71,8 @@ atomic_ulong total_removes;
 //atomic_ulong total_sum_rm;
 //atomic_ulong total_sum_ins;
 
-unsigned int program_duration = 10;
+unsigned int program_duration = 0;
+unsigned int item_amount = 0;
 unsigned int queue_count_arg = 0;
 bool load_balance_thread_arg = false;
 unsigned int threshold_type_arg = 0;
@@ -84,10 +85,23 @@ unsigned int *q_ratios = NULL;
 unsigned long computation_load = 0;
 bool hook = false;
 
+unsigned long *n_inserted_arr;
+
 
 /***********
  * FUNCTIONS
  */
+
+unsigned long sum_arr_t(unsigned long* arr) {
+
+  unsigned long res = 0;
+  for(int i = 0; i < queue_count_arg; i++) {
+    res += arr[i];
+  }
+
+  return res;
+
+}
 
 struct timespec *time_diff(struct timespec *start, struct timespec *end) {
 
@@ -123,51 +137,104 @@ void *work(void *arg_struct) {
 
   struct q_args *args = arg_struct;
   long *tid = args->tid;
+  long *qid = (long*) malloc(sizeof(long));
+  *qid = *tid/2;
   //unsigned long pthread_tid = pthread_self();
-
-  struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
-  clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
   struct stat st = {0};
   if (stat("/tmp/distributed_queue", &st) == -1) {
     mkdir("/tmp/distributed_queue", 0777);
   }
 
+  struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  clock_gettime(CLOCK_REALTIME, tp_rt_start);
+
   if ( *tid % 2 == 0 ) {
    /*
     * PRODUCER
     */
-    unsigned long n_inserted = 0;
     int *rn;
+    int x = 0;
 
-    while(1) {
-      //Start producing items
-      rn = generateRandomNumber(0, 100);
-      if (rn == NULL)
-        continue;
+    if ( item_amount > 0 ) {
+      while(1) {
+        //Start producing items
+        rn = generateRandomNumber(0, 100);
+        if (rn == NULL)
+          continue;
 
-      atomic_fetch_add( &total_inserts, 1);
-      n_inserted++;
+        //atomic_fetch_add( &total_inserts, 1);
+        //n_inserted++;
+        n_inserted_arr[*tid / 2]++;
 
-      if ( atomic_load(&total_inserts) > 100000000 ) {
-        atomic_fetch_sub( &total_inserts, 1);
-        LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+        x++;
+        if (x == 10000) {
+          x = 0;
+          if ( sum_arr_t(n_inserted_arr) > item_amount ) {
+            //atomic_fetch_sub( &total_inserts, 1);
+            //LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+            LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid / 2]);
 
-        if (*tid == 0) {
-          LOG_INFO_TD("Total inserted items is %lu\n", atomic_load(&total_inserts));
-          clock_gettime(CLOCK_REALTIME, tp_rt_end);
-          LOG_INFO_TD("Final realtime program time = %lu.%lu\n", 
-            time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
+            if (*tid == 0) {
+              LOG_INFO_TD("Total inserted items is %lu\n", sum_arr_t(n_inserted_arr));
+              clock_gettime(CLOCK_REALTIME, tp_rt_end);
+              LOG_INFO_TD("Final realtime program time = %lu sec, %lu nsec\n", 
+                time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
+              lockfree_queue_stop_watcher();
+            }
+            return NULL;
+          }
+          //lockfree_queue_insert_item(rn);
+          lockfree_queue_insert_item_by_tid(qid, rn);
+          //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
+          n_inserted_arr[*tid / 2]++;
         }
-
-        if ( (long) *tid == 0 ) {
-          lockfree_queue_stop_watcher();
+        else {
+          //lockfree_queue_insert_item(rn);
+          lockfree_queue_insert_item_by_tid(qid, rn);
+          //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
+          n_inserted_arr[*tid / 2]++;
         }
-        return NULL;
       }
-      else {
-        lockfree_queue_insert_item(rn);
+    }
+    if (program_duration > 0) {
+      while(1) {
+        //Start producing items
+        rn = generateRandomNumber(0, 100);
+        if (rn == NULL)
+          continue;
+
+        //atomic_fetch_add( &total_inserts, 1);
+        
+        x++;
+        if (x == 10000) {
+          clock_gettime(CLOCK_REALTIME, tp_rt_end);
+          x = 0;
+          if ( time_diff(tp_rt_start, tp_rt_end)->tv_sec >= program_duration ) {
+            //LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+            LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid / 2]);
+            if (*tid == 0) {
+              //LOG_INFO_TD("Total inserted items is %lu\n", atomic_load(&total_inserts));
+              LOG_INFO_TD("Total inserted items is %lu\n", sum_arr_t(n_inserted_arr));
+              clock_gettime(CLOCK_REALTIME, tp_rt_end);
+              LOG_INFO_TD("Final realtime program time = %lu sec, %lu nsec\n", 
+                time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
+              lockfree_queue_stop_watcher();
+            }
+            return NULL;
+          }
+          //lockfree_queue_insert_item(rn);
+          lockfree_queue_insert_item_by_tid(qid, rn);
+          //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
+          n_inserted_arr[*tid / 2]++;
+        }
+        else {
+          //lockfree_queue_insert_item(rn);
+          lockfree_queue_insert_item_by_tid(qid, rn);
+          //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
+          n_inserted_arr[*tid / 2]++;
+        }
       }
     }
   }
@@ -193,6 +260,18 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       break;
     }
 
+    case 'a': {
+      char *endptr;
+      item_amount = strtoul(arg, &endptr, 10);
+      if (endptr == arg) {
+        //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
+        fprintf (stderr, "OPT[ERROR]: 'a' Cannot convert string to number\n");
+        exit(-1);
+      }
+      printf("OPT: Amount of items to insert set to %s\n", arg);
+      break;
+    }
+
     case 'q': {
       char *endptr;
       queue_count_arg = strtoul(arg, &endptr, 10);
@@ -207,6 +286,10 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
         for (int i = 0; i < queue_count_arg; i++) {
           q_ratios[i] = 1;
         }
+      }
+      n_inserted_arr = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
+      for (int i =0; i < queue_count_arg; i++) {
+        n_inserted_arr[i] = 0;
       }
       printf("OPT: Queue count set to %s\n", arg);
       break;
@@ -439,6 +522,7 @@ int main(int argc, char** argv) {
 
   struct argp_option options[] = { 
     { "duration",                 'd', "<NUM> in seconds",0, "Sets duration of inserting items in seconds", 1},
+    { "amount",                 'a', "<NUM> in items",0, "Sets amount of items to insert", 1},
     { "queue-count",              'q', "<NUM>",           0, "Sets amount of queues on one node", 1},
     { "lb-thread",                'l', "true/false",      0, "Enables or disables dedicated load balancing thread", 2},
     { "hook",                     'h', NULL,      0, "Waits for gdb hook on pid. In gdb enter 'set var debug_wait=1' \

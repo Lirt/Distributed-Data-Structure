@@ -127,12 +127,16 @@ void *work(void *arg_struct) {
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *tp_rt_start_insert = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *tp_rt_end_insert = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
   struct stat st = {0};
   if (stat("/tmp/distributed_queue", &st) == -1) {
     mkdir("/tmp/distributed_queue", 0777);
   }
+
+  //clock_gettime(CLOCK_REALTIME, tp_rt_start_insert);
 
   if ( *tid % 2 == 0 ) {
    /*

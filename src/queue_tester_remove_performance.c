@@ -3,10 +3,6 @@
    #define _DEFAULT_SOURCE
 #endif
 
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
-
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
    #include "../include/ds_debug.h"
@@ -17,6 +13,11 @@
    #include "../include/distributed_queue_api.h"
 #endif
 
+#ifndef PTHREAD_H
+   #define PTHREAD_H
+  #include <pthread.h>
+#endif
+
 #ifndef STDATOMIC_H
    #define STDATOMIC_H
    #include <stdatomic.h>
@@ -25,11 +26,6 @@
 #ifndef STDLIB_H
    #define STDLIB_H
   #include <stdlib.h>
-#endif
-
-#ifndef PTHREAD_H
-   #define PTHREAD_H
-  #include <pthread.h>
 #endif
 
 #ifndef UNISTD_H
@@ -44,6 +40,9 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifndef TIME_H
    #define TIME_H
@@ -61,7 +60,7 @@
  * GLOBAL VARIABLES
  */
 
- const char *argp_program_version = "DQS version 0.1";
+const char *argp_program_version = "DQS version 0.1";
 const char *argp_program_bug_address = "ondrej.vaskoo@gmail.com"; 
 static char doc[] = "DQS by Ondrej Vasko";
 
@@ -71,7 +70,8 @@ atomic_ulong total_removes;
 //atomic_ulong total_sum_rm;
 //atomic_ulong total_sum_ins;
 
-unsigned int program_duration = 10;
+unsigned int program_duration = 0;
+unsigned int item_amount = 0;
 unsigned int queue_count_arg = 0;
 bool load_balance_thread_arg = false;
 unsigned int threshold_type_arg = 0;
@@ -83,11 +83,25 @@ unsigned long global_lb_threshold_static = 0;
 unsigned int *q_ratios = NULL;
 unsigned long computation_load = 0;
 bool hook = false;
+pthread_barrier_t barrier;
+
+unsigned long *n_removed_arr;
 
 
 /***********
  * FUNCTIONS
  */
+
+unsigned long sum_arr_t(unsigned long* arr) {
+
+  unsigned long res = 0;
+  for(int i = 0; i < queue_count_arg; i++) {
+    res += arr[i];
+  }
+
+  return res;
+
+}
 
 struct timespec *time_diff(struct timespec *start, struct timespec *end) {
 
@@ -123,16 +137,18 @@ void *work(void *arg_struct) {
 
   struct q_args *args = arg_struct;
   long *tid = args->tid;
+  long *qid = (long*) malloc(sizeof(long));
+  *qid = *tid/2;
   //unsigned long pthread_tid = pthread_self();
-
-  struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
-  clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
   struct stat st = {0};
   if (stat("/tmp/distributed_queue", &st) == -1) {
     mkdir("/tmp/distributed_queue", 0777);
   }
+
+  struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
   if ( *tid % 2 == 0 ) {
    /*
@@ -150,7 +166,7 @@ void *work(void *arg_struct) {
       atomic_fetch_add( &total_inserts, 1);
       n_inserted++;
 
-      if ( atomic_load(&total_inserts) > 100000000 ) {
+      if ( atomic_load(&total_inserts) > item_amount ) {
         atomic_fetch_sub( &total_inserts, 1);
         atomic_fetch_add( &finished, 1);
         LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
@@ -165,14 +181,14 @@ void *work(void *arg_struct) {
         return NULL;
       }
       else {
-        lockfree_queue_insert_item(rn);
+        lockfree_queue_insert_item_by_tid(qid, rn);
       }
     }
   }
   else {
 
     int timeout = 0;
-    unsigned long n_removed = 0;
+    //unsigned long n_removed = 0;
     int *retval;
 
     while (1) {
@@ -186,25 +202,31 @@ void *work(void *arg_struct) {
       }
     }
 
+    pthread_barrier_wait(&barrier);
+    printf("Starting to removing items\n");
     clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
     while(1) {
-      retval = lockfree_queue_remove_item(timeout);
+      //retval = lockfree_queue_remove_item(timeout);
+      retval = lockfree_queue_remove_item_by_tid(qid, timeout);
 
       if (retval == NULL) {
         unsigned long size = lockfree_queue_size_total();
         if (size == 0) {
-          unsigned long size = lockfree_queue_size_total_consistent();
+          /*unsigned long size2 = lockfree_queue_size_total_consistent();
+          if (size2 != 0) {
+            continue;
+          }*/
           if (size != 0) {
             continue;
           }
-          
           clock_gettime(CLOCK_REALTIME, tp_rt_end);
 
-          LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed);
+          LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid / 2]);
 
           if ( *tid / 2 == 0) {
-            LOG_INFO_TD("Total removed items %lu\n", atomic_load(&total_removes));
+            //LOG_INFO_TD("Total removed items %lu\n", atomic_load(&total_removes));
+            LOG_INFO_TD("Total removed items %lu\n", sum_arr_t(n_removed_arr));
             LOG_INFO_TD("Final remove realtime program time = %lu.%lu\n", 
               time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
           }
@@ -216,8 +238,9 @@ void *work(void *arg_struct) {
         }
       }
       else {
-        n_removed++;
-        atomic_fetch_add( &total_removes, 1);
+        //n_removed++;
+        n_removed_arr[*tid / 2]++;
+        //atomic_fetch_add( &total_removes, 1);
         free(retval);
       }
     }
@@ -244,6 +267,18 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       break;
     }
 
+    case 'a': {
+      char *endptr;
+      item_amount = strtoul(arg, &endptr, 10);
+      if (endptr == arg) {
+        //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
+        fprintf (stderr, "OPT[ERROR]: 'a' Cannot convert string to number\n");
+        exit(-1);
+      }
+      printf("OPT: Amount of items to insert set to %s\n", arg);
+      break;
+    }
+
     case 'q': {
       char *endptr;
       queue_count_arg = strtoul(arg, &endptr, 10);
@@ -252,6 +287,7 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
         fprintf (stderr, "OPT[ERROR]: 'q' Cannot convert string to number\n");
         exit(-1);
       }
+      
       if (queue_count_arg > 8) {
         free(q_ratios);
         q_ratios = (unsigned int*) malloc(queue_count_arg * sizeof(unsigned int));
@@ -259,6 +295,14 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
           q_ratios[i] = 1;
         }
       }
+      
+      n_removed_arr = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
+      for (int i =0; i < queue_count_arg; i++) {
+        n_removed_arr[i] = 0;
+      }
+
+      pthread_barrier_init(&barrier, NULL, queue_count_arg);
+
       printf("OPT: Queue count set to %s\n", arg);
       break;
     }
@@ -471,13 +515,12 @@ int main(int argc, char** argv) {
 
   /*
    * USAGE 
-   * queue_tester_remove_performance -d 0 -q 1 -l false
-   * queue_tester_remove_performance -d 0 -q 2 -l false
-   * queue_tester_remove_performance -d 0 -q 4 -l false
-   * queue_tester_remove_performance -d 0 -q 8 -l false
-   * queue_tester_remove_performance -d 0 -q 16 -l false
+   * 
+   * 
+   * 
+   * 
+   * 
    */
-
 
   setbuf(stdout, NULL);
 
@@ -490,6 +533,7 @@ int main(int argc, char** argv) {
 
   struct argp_option options[] = { 
     { "duration",                 'd', "<NUM> in seconds",0, "Sets duration of inserting items in seconds", 1},
+    { "amount",                 'a', "<NUM> in items",0, "Sets amount of items to insert", 1},
     { "queue-count",              'q', "<NUM>",           0, "Sets amount of queues on one node", 1},
     { "lb-thread",                'l', "true/false",      0, "Enables or disables dedicated load balancing thread", 2},
     { "hook",                     'h', NULL,      0, "Waits for gdb hook on pid. In gdb enter 'set var debug_wait=1' \
@@ -528,6 +572,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
     pthread_join(cb_threads[i], NULL);
   }
+  pthread_barrier_destroy(&barrier);
 
   printf("Main finished\n");
   MPI_Finalize();
