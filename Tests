@@ -136,3 +136,11 @@ Distributed queues in shared memory: multicore performance and scalability throu
 ./bin/queue_tester_remove_performance -q 16 -a 80000000
 ./bin/queue_tester_remove_performance -q 32 -a 80000000
 ./bin/queue_tester_remove_performance -q 64 -a 80000000
+
+
+-d 7 -q 1 -l false
+mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=all
+mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=pair
+mpirun -np 4 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=all
+mpirun -np 4 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=pair
+

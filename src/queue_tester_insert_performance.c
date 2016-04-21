@@ -165,8 +165,6 @@ void *work(void *arg_struct) {
           continue;
 
         //atomic_fetch_add( &total_inserts, 1);
-        //n_inserted++;
-        n_inserted_arr[*tid / 2]++;
 
         x++;
         if (x == 10000) {

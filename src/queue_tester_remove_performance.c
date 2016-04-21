@@ -163,7 +163,7 @@ void *work(void *arg_struct) {
       if (rn == NULL)
         continue;
 
-      atomic_fetch_add( &total_inserts, 1);
+      atomic_fetch_add( &total_inserts, 1 );
       n_inserted++;
 
       if ( atomic_load(&total_inserts) > item_amount ) {
@@ -203,7 +203,6 @@ void *work(void *arg_struct) {
     }
 
     pthread_barrier_wait(&barrier);
-    printf("Starting to removing items\n");
     clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
     while(1) {

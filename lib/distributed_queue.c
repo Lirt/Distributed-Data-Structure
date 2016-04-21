@@ -470,9 +470,10 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   sprintf(pid_str, "%d", pid_int);
   printf("pid=%d\n", pid_int);
 
-  if (hook_arg) {
+
+  if ( hook_arg == true ) {
     //LOG_INFO_TD("Hook enabled\n");
-    printf("Hook enabled, enter 'set var debug_wait=1 to start program'\n");
+    printf("DS: Hook enabled, enter 'set var debug_wait=1 to start program'\n");
     while (debug_wait == 0) {
       sleep(1);
     }
@@ -1925,9 +1926,12 @@ unsigned long global_size(bool consistency) {
     time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec, time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec );
 
   total_rt_global_size_time_sec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec;
-  total_rt_global_size_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec;
+    /*printf("rt_start=%ld.%ld --- rt_end=%ld.%ld --- time=%ld.%ld\n", 
+      tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_rt_end->tv_sec, tp_rt_end->nsec, 
+      time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec);*/ //TODO TEST
+  total_rt_global_size_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec / 1000000000L;
   total_thr_global_size_time_sec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec;
-  total_thr_global_size_time_nsec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec;
+  total_thr_global_size_time_nsec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec / 1000000000L;
 
   //printf("RANK: %d global size is %ld\n", comm_rank, global_size_val);
   return global_size_val;
@@ -2818,7 +2822,7 @@ double sum_time(time_t sec, long nsec) {
 
   double final_time = (double) 0;
   final_time += (double) sec;
-  final_time += (double) nsec / (double) 1000000000;
+  final_time += (double) nsec / (double) 1000000000L;
   return final_time;
 
 }

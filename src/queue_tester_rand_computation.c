@@ -85,7 +85,7 @@ unsigned long global_lb_threshold_static = 0;
 unsigned int *q_ins_ratios = NULL;
 unsigned int *q_rm_ratios = NULL;
 unsigned long computation_load = 0;
-bool hook = false;
+bool hook;
 pthread_barrier_t barrier;
 
 unsigned long *n_inserted_arr;
@@ -206,7 +206,7 @@ void *work(void *arg_struct) {
     * PRODUCER
     */
     atomic_fetch_add(&np, 1);
-    if ( atomic_load(&np) >= producers ) {
+    if ( atomic_load(&np) > producers ) {
       atomic_fetch_add( &finished, 1);
       fclose(work_file_ins);
       fclose(work_file_rm);
@@ -261,7 +261,7 @@ void *work(void *arg_struct) {
     * CONSUMER
     */
     atomic_fetch_add(&nc, 1);
-    if ( atomic_load(&nc) >= consumers ) {
+    if ( atomic_load(&nc) > consumers ) {
       //atomic_fetch_add( &finished, 1);
       fclose(work_file_ins);
       fclose(work_file_rm);
@@ -396,8 +396,6 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
         sums[i] = 0;
       }
 
-      pthread_barrier_init(&barrier, NULL, queue_count_arg);
-
       printf("OPT: Queue count set to %s\n", arg);
       break;
     }
@@ -433,8 +431,8 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
         fprintf(stderr, "OPT[ERROR]: \n");
         exit(-1);
       }
+      pthread_barrier_init(&barrier, NULL, producers);
       printf("OPT: Number of producer threads set to %d.\n", producers);
-      hook = true;
       break;
     }
 
@@ -447,7 +445,6 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
         exit(-1);
       }
       printf("OPT: Number of consumer threads set to %d.\n", consumers);
-      hook = true;
       break;
     }
 
@@ -706,8 +703,8 @@ int main(int argc, char** argv) {
     { "lb-thread",                'l', "true/false",      0, "Enables or disables dedicated load balancing thread", 2},
     { "hook",                     'h', NULL,      0, "Waits for gdb hook on pid. In gdb enter 'set var debug_wait=1' \
                                                         and after that 'continue' to start program.", 2},
-    { "producers",  'p', "<NUM>",       0, "Amount of producer threads", 2},
-    { "consumers",  'c', "<NUM>",       0, "Amount of consumer threads", 2},
+    { "producers",                'p', "<NUM>",           0, "Amount of producer threads", 4},
+    { "consumers",                'c', "<NUM>",           0, "Amount of consumer threads", 4},
     { "local-threshold-percent",  150, "<DECIMAL>",       0, "Sets threshold for local load balancing thread in percentage", 2},
     { "global-threshold-percent", 151, "<DECIMAL>",       0, "Sets threshold for global load balancing thread in percentage", 2},
     { "local-threshold-static",   152, "<NUM>",           0, "Sets static threshold for local load balancing thread in number of items", 2},
