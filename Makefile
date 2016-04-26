@@ -55,16 +55,12 @@ obj/queue_tester_remove_performance_debug.o: src/queue_tester_remove_performance
 obj/queue_tester_remove_performance.o: src/queue_tester_remove_performance.c
 	$(CC) $(CFLAGS) -c src/queue_tester_remove_performance.c -o obj/queue_tester_remove_performance.o $(LINK)
 
-obj/queue_tester_local_balance_performance.o: src/queue_tester_local_balance_performance.c
-	$(CC) $(CFLAGS) -c src/queue_tester_local_balance_performance.c -o obj/queue_tester_local_balance_performance.o $(LINK)
-
-all: obj/distributed_queue.o obj/distributed_queue_debug.o obj/queue_tester_rand_computation.o obj/queue_tester_rand_computation_debug.o obj/queue_tester_insert_performance.o obj/queue_tester_remove_performance.o obj/queue_tester_remove_performance_debug.o obj/queue_tester_local_balance_performance.o 
+all: obj/distributed_queue.o obj/distributed_queue_debug.o obj/queue_tester_rand_computation.o obj/queue_tester_rand_computation_debug.o obj/queue_tester_insert_performance.o obj/queue_tester_remove_performance.o obj/queue_tester_remove_performance_debug.o
 	$(CC) $(CFLAGS) $(DEB) obj/distributed_queue_debug.o obj/queue_tester_rand_computation_debug.o -o bin/queue_tester_rand_computation_debug $(LINK)
 	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_rand_computation.o -o bin/queue_tester_rand_computation $(LINK)
 	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_insert_performance.o -o bin/queue_tester_insert_performance $(LINK)
 	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_remove_performance.o -o bin/queue_tester_remove_performance $(LINK)
 	$(CC) $(CFLAGS) $(DEB) obj/distributed_queue_debug.o obj/queue_tester_remove_performance_debug.o -o bin/queue_tester_remove_performance_debug $(LINK)
-	$(CC) $(CFLAGS) obj/distributed_queue.o obj/queue_tester_local_balance_performance.o -o bin/queue_tester_local_balance_performance $(LINK)
 
 
 tester_equal: obj/distributed_queue.o obj/distributed_queue_debug.o obj/queue_tester_equal.o obj/queue_tester_equal_debug.o

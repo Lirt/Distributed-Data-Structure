@@ -147,6 +147,7 @@ void *work(void *arg_struct) {
   *qid = *tid/2;
   //int q_count = args->q_count;
   //int t_count = args->t_count;
+  int comm_rank = MPI_Comm_rank(MPI_COMM_WORLD, &comm_rank);
   unsigned long pthread_tid = pthread_self();
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
@@ -158,9 +159,8 @@ void *work(void *arg_struct) {
   struct timespec *tp_thr = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_start);
-  clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
-  LOG_DEBUG_TD(*tid, "START PROGRAM: \n\tRealtime - %lu.%lu seconds\n\tProcess Time - %lu.%lu seconds\n\tThread Time - %lu.%lu seconds\n",
-    tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec, tp_thr->tv_sec, tp_thr->tv_nsec);
+  LOG_DEBUG_TD(*tid, "START PROGRAM: \n\tRealtime - %lu.%lu seconds\n\tProcess Time - %lu.%lu seconds\n",
+    tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec);
   LOG_DEBUG_TD(*tid, "\tThread %ld has ID %lu, insertion ratio %d and remove ratio\n", 
     *tid, pthread_tid, q_ins_ratios[*tid / 2], q_rm_ratios[*tid / 2] );
 
@@ -218,7 +218,6 @@ void *work(void *arg_struct) {
       LOG_ERR_T(*tid, "ERROR: cannot write to file %s\n", filename_ins);
     }
 
-    //unsigned long n_inserted = 0;
     int *rn;
     int x = 0;
 
@@ -240,9 +239,6 @@ void *work(void *arg_struct) {
         clock_gettime(CLOCK_REALTIME, tp_rt_end_insert);
         if ( time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_sec >= program_duration ) {
           pthread_barrier_wait(&barrier);
-          LOG_DEBUG_TD(*tid, "Time is up, endTime = %ld sec and %ld nsec\n", 
-            time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_sec, time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_nsec);
-          LOG_DEBUG_TD(*tid, "\tThread Inserted %lu items\n", n_inserted_arr[*tid/2]);
           LOG_INFO_TD("Time is up, endTime = %ld sec and %ld nsec\n", 
             time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_sec, time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_nsec);
           LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid/2]);
@@ -262,7 +258,6 @@ void *work(void *arg_struct) {
     */
     atomic_fetch_add(&nc, 1);
     if ( atomic_load(&nc) > consumers ) {
-      //atomic_fetch_add( &finished, 1);
       fclose(work_file_ins);
       fclose(work_file_rm);
       return NULL;

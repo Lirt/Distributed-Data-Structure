@@ -10,7 +10,7 @@
 
 #ifndef DS_QUEUE_H
    #define DS_QUEUE_H
-	#include "../include/distributed_queue.h"
+  #include "../include/distributed_queue.h"
 #endif
 
 #ifndef DS_QUEUE_OFFICIAL_H
@@ -20,12 +20,12 @@
 
 #ifndef PTHREAD_H
    #define PTHREAD_H
-	#include <pthread.h>
+  #include <pthread.h>
 #endif
 
 #ifndef STDLIB_H
    #define STDLIB_H
-	#include <stdlib.h>
+  #include <stdlib.h>
 #endif
 
 #ifndef STDBOOL_H
@@ -169,6 +169,8 @@ atomic_ulong moved_items_log;
 atomic_ulong load_balancer_call_count_watcher;
 atomic_ulong load_balancer_call_count_remove;
 atomic_ulong load_balancer_call_count_global;
+atomic_ulong global_size_call_count;
+atomic_ulong global_size_call_count_in_wait;
 time_t total_rt_lb_time_sec;
 long total_rt_lb_time_nsec;
 time_t total_thr_lb_time_sec;
@@ -190,6 +192,7 @@ pthread_mutex_t load_balance_global_mutex; //To lock thread until global operati
 pthread_rwlock_t load_balance_global_rwlock; //To lock thread until global operation as global_size or global_balance is done
 pthread_cond_t load_balance_global_cond;
 pthread_rwlock_t global_size_rwlock;
+pthread_rwlock_t global_size_executing_rwlock;
 //pthread_rwlockattr_t attr;
 
 unsigned int global_size_receive_timeout = 10000; //timeout for receive
@@ -578,6 +581,8 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   atomic_init(&load_balancer_call_count_watcher, 0);
   atomic_init(&load_balancer_call_count_remove, 0);
   atomic_init(&load_balancer_call_count_global, 0);
+  atomic_init(&global_size_call_count, 0);
+  atomic_init(&global_size_call_count_in_wait, 0);
   atomic_init(&rm_count, 0);
   atomic_init(&rm_count_last, 0);
   total_rt_lb_time_sec = 0;
@@ -594,6 +599,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   * ID of master node on start of program is 0 and is saved in master_id variable
   */
   master_id = 0;
+  printf("Master ID: %d\n", master_id);
 
  /*
   * get_nprocs counts hyperthreads as separate CPUs --> 2 core CPU with HT has 4 cores
@@ -653,6 +659,10 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   }
   if (pthread_rwlock_init(&global_size_rwlock, NULL) != 0) {
     fprintf(stderr,"Lock init of global_size_rwlock failed\n");
+    exit(-1);
+  }
+  if (pthread_rwlock_init(&global_size_executing_rwlock, NULL) != 0) {
+    fprintf(stderr,"Lock init of global_size_executing_rwlock failed\n");
     exit(-1);
   }
   if (pthread_rwlock_init(&load_balance_global_rwlock, NULL) != 0) {
@@ -1098,25 +1108,27 @@ int load_balancer_pair_balance(void* lb_struct_arg) {
 
   struct load_balancer_struct *lb_struct = lb_struct_arg;
 
+  //struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
+  //struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *current_time = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *tp_thr_start = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *tp_thr_end = (struct timespec*) malloc (sizeof (struct timespec));
+  //clock_gettime(CLOCK_REALTIME, tp_rt_start);
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_start);
+
   if (queue_count == 1) {
     pthread_mutex_unlock(&rm_mutexes[lb_struct->src_q]);
     return 0;
   }
 
-  struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_thr_start = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_thr_end = (struct timespec*) malloc (sizeof (struct timespec));
-  clock_gettime(CLOCK_REALTIME, tp_rt_start);
-  clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_start);
-
-  if ( (time_diff_dds(last_local_rebalance_time, tp_rt_start)->tv_sec == 0) && 
-        time_diff_dds(last_local_rebalance_time, tp_rt_start)->tv_nsec < local_balance_last_balance_threshold ) {
+  clock_gettime(CLOCK_REALTIME, current_time);
+  if ( (time_diff_dds(last_local_rebalance_time, current_time)->tv_sec == 0) && 
+        time_diff_dds(last_local_rebalance_time, current_time)->tv_nsec < local_balance_last_balance_threshold ) {
     ;
   }
   else {
     LOAD_BALANCE_LOG_DEBUG_TD("Last local balance was %ld sec and %ld nsec ago\n", 
-      time_diff_dds(last_local_rebalance_time, tp_rt_start)->tv_sec, time_diff_dds(last_local_rebalance_time, tp_rt_start)->tv_nsec);
+      time_diff_dds(last_local_rebalance_time, current_time)->tv_sec, time_diff_dds(last_local_rebalance_time, current_time)->tv_nsec);
     usleep(local_balance_wait_timer);    
   }
   clock_gettime(CLOCK_REALTIME, last_local_rebalance_time);
@@ -1167,17 +1179,19 @@ int load_balancer_pair_balance(void* lb_struct_arg) {
   pthread_mutex_unlock(&rm_mutexes[lb_struct->src_q]);
   pthread_mutex_unlock(&local_queue_struct_mutex);
 
-  clock_gettime(CLOCK_REALTIME, tp_rt_end);
+  //clock_gettime(CLOCK_REALTIME, tp_rt_end);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_end);
-  LOAD_BALANCE_LOG_DEBUG_TD("[LB-Pair]: Final realtime local LB time = '%lu.%lu'\n", 
-    time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
+  //LOAD_BALANCE_LOG_DEBUG_TD("[LB-Pair]: Final realtime local LB time = '%lu.%lu'\n", 
+  //  time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
   LOAD_BALANCE_LOG_DEBUG_TD("[LB-Pair]: Final thread local LB time = '%lu.%lu'\n", 
     time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec, time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec );
-  total_rt_lb_time_sec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec;
-  total_rt_lb_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec;
+  //total_rt_lb_time_sec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec;
+  //total_rt_lb_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec;
   total_thr_lb_time_sec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec;
   total_thr_lb_time_nsec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec;
-
+  /*printf("Local balance: \n\trt_start=%ld.%ld --- \n\trt_end=%ld.%ld --- \n\ttime_diff=%ld.%ld ---\n", 
+      tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_rt_end->tv_sec, tp_rt_end->tv_nsec, 
+      time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec);*/
   return 0;
 
 }
@@ -1197,20 +1211,22 @@ int load_balancer_all_balance(void* arg) {
     return 0;
   }
 
-  struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  //struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
+  //struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *current_time = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_thr_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_thr_end = (struct timespec*) malloc (sizeof (struct timespec));
-  clock_gettime(CLOCK_REALTIME, tp_rt_start);
+  //clock_gettime(CLOCK_REALTIME, tp_rt_start);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_start);
+  clock_gettime(CLOCK_REALTIME, current_time);
 
-  if ( (time_diff_dds(tp_rt_start, last_local_rebalance_time)->tv_sec == 0) && 
-        time_diff_dds(tp_rt_start, last_local_rebalance_time)->tv_nsec < local_balance_last_balance_threshold ) {
+  if ( (time_diff_dds(current_time, last_local_rebalance_time)->tv_sec == 0) && 
+        time_diff_dds(current_time, last_local_rebalance_time)->tv_nsec < local_balance_last_balance_threshold ) {
     ;
   }
   else {
     LOAD_BALANCE_LOG_DEBUG_TD("Last local balance was %ld sec and %ld nsec ago\n", 
-      time_diff_dds(last_local_rebalance_time, tp_rt_start)->tv_sec, time_diff_dds(last_local_rebalance_time, tp_rt_start)->tv_nsec);
+      time_diff_dds(last_local_rebalance_time, current_time)->tv_sec, time_diff_dds(last_local_rebalance_time, current_time)->tv_nsec);
     usleep(local_balance_wait_timer);    
   }
   clock_gettime(CLOCK_REALTIME, last_local_rebalance_time);
@@ -1303,17 +1319,17 @@ int load_balancer_all_balance(void* arg) {
   UNLOCK_LOCAL_QUEUES();
   pthread_mutex_unlock(&load_balance_mutex);
 
-  clock_gettime(CLOCK_REALTIME, tp_rt_end);
+  //clock_gettime(CLOCK_REALTIME, tp_rt_end);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_end);
-  LOAD_BALANCE_LOG_DEBUG_TD("LB TIME END: \n\tRealtime: %lu sec and %lu nsec\n\tThread Time: %lu sec and %lu nsec\n", 
-    tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_thr_end->tv_sec, tp_thr_end->tv_nsec);
-  LOAD_BALANCE_LOG_DEBUG_TD("Final realtime local LB time = '%lu sec and %lu nsec'\n", 
-    time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
+  //LOAD_BALANCE_LOG_DEBUG_TD("LB TIME END: \n\tRealtime: %lu sec and %lu nsec\n\tThread Time: %lu sec and %lu nsec\n", 
+  //  tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_thr_end->tv_sec, tp_thr_end->tv_nsec);
+  //LOAD_BALANCE_LOG_DEBUG_TD("Final realtime local LB time = '%lu sec and %lu nsec'\n", 
+  //  time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
   LOAD_BALANCE_LOG_DEBUG_TD("Final thread local LB time = '%lu sec and %lu nsec'\n", 
     time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec, time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec );
 
-  total_rt_lb_time_sec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec;
-  total_rt_lb_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec;
+  //total_rt_lb_time_sec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec;
+  //total_rt_lb_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec;
   total_thr_lb_time_sec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec;
   total_thr_lb_time_nsec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec;
 
@@ -1815,7 +1831,8 @@ void** lockfree_queue_remove_Nitems (unsigned long N, int timeout) {
    
    unsigned long item_count = atomic_load( &(q->a_qsize) ); 
    if ( atomic_load( &(q->a_qsize) ) < N ) {
-      printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, item_count, N);
+      //printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, item_count, N);
+      //LOG_DEBUG_TD("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, item_count, N);
       pthread_mutex_unlock(&rm_mutexes[tid]);
       return NULL;
    }
@@ -1832,7 +1849,8 @@ void** lockfree_queue_remove_Nitems (unsigned long N, int timeout) {
    }
 
    if (i != N-1) {
-      printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
+      //printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
+      LOG_DEBUG_TD("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
       pthread_mutex_unlock(&rm_mutexes[tid]);
       return NULL;
    }
@@ -1865,6 +1883,7 @@ unsigned long global_size(bool consistency) {
   //TODO co ak viac nodov posle ziadost o global size. pri architekture s mastrom/P2P
   //last_global_size_time
   //alebo global_size_not_consistent
+  //TODO Test viac nodov
 
   if (comm_size == 1) {
     return lockfree_queue_size_total();
@@ -1881,9 +1900,12 @@ unsigned long global_size(bool consistency) {
     }
     else {
       pthread_rwlock_unlock(&global_size_rwlock);
+      atomic_fetch_add(&global_size_call_count_in_wait, 1);
       return last_global_size;
     }
   }
+
+  atomic_fetch_add(&global_size_call_count, 1);
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
@@ -1896,6 +1918,7 @@ unsigned long global_size(bool consistency) {
 
   MPI_Status status;
   short consistency_type;
+  short buf;
 
   if ( consistency ) {
     consistency_type = 1;
@@ -1904,44 +1927,54 @@ unsigned long global_size(bool consistency) {
     consistency_type = 0;
   }
   
-  //printf("RANK: %d asking for global size\n", comm_rank);
   MPI_Send(&consistency_type, 1, MPI_SHORT, master_id, 900, MPI_COMM_WORLD);
+  printf("900 send from %d\n", comm_rank);
 
   unsigned long global_size_val = 0;
-  MPI_Recv(&global_size_val, 1, MPI_UNSIGNED_LONG, master_id, 903, MPI_COMM_WORLD, &status);
-  last_global_size = global_size_val;
+
+  MPI_Recv(&buf, 1, MPI_SHORT, master_id, 905, MPI_COMM_WORLD, &status);
+  /*if ( pthread_rwlock_trywrlock(&global_size_executing_rwlock) != 0 ) {
+    //lock in listener
+    MPI_Recv(&global_size_val, 1, MPI_UNSIGNED_LONG, master_id, 903, MPI_COMM_WORLD, &status);
+    last_global_size = global_size_val;
+    printf("Rank %d called for GB and received 903\n", comm_rank);
+
+    pthread_rwlock_unlock(&global_size_rwlock);
+  }*/
+  //else {
+    //lock here
+    MPI_Recv(&global_size_val, 1, MPI_UNSIGNED_LONG, master_id, 903, MPI_COMM_WORLD, &status);
+    last_global_size = global_size_val;
+    printf("Rank %d called for GB and received 903\n", comm_rank);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    pthread_rwlock_unlock(&global_size_executing_rwlock);
+    pthread_rwlock_unlock(&global_size_rwlock);
+  //}
+
+
   
-  MPI_Barrier(MPI_COMM_WORLD);
-  pthread_rwlock_unlock(&global_size_rwlock);
-  
+  printf("Rank %d called for GB and is beyond barrier\n", comm_rank);
   GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "NODE %d: Global structure size is %ld\n", comm_rank, global_size_val);
+  printf("NODE %d: Global structure size is %ld\n", comm_rank, global_size_val);
   
   clock_gettime(CLOCK_REALTIME, tp_rt_end);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_end);
-  /*GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "GET GLOBAL SIZE END: \n\tRealtime- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
-    tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_thr_end->tv_sec, tp_thr_end->tv_nsec);*/
   GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "Final realtime global LB time = '%lu.%lu'\n", 
     time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec );
   GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "Final thread global LB time = '%lu.%lu'\n", 
     time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec, time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec );
 
   total_rt_global_size_time_sec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec;
-    /*printf("rt_start=%ld.%ld --- rt_end=%ld.%ld --- time=%ld.%ld\n", 
-      tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_rt_end->tv_sec, tp_rt_end->nsec, 
-      time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec);*/ //TODO TEST
-  total_rt_global_size_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec / 1000000000L;
+  total_rt_global_size_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec;
   total_thr_global_size_time_sec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_sec;
-  total_thr_global_size_time_nsec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec / 1000000000L;
-
-  //printf("RANK: %d global size is %ld\n", comm_rank, global_size_val);
+  total_thr_global_size_time_nsec += time_diff_dds(tp_thr_start, tp_thr_end)->tv_nsec;
+  printf("NODE %d: Global size: \n\trt_start=%ld.%ld --- \n\trt_end=%ld.%ld --- \n\ttime_diff=%ld.%ld ---\n", comm_rank,
+      tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_rt_end->tv_sec, tp_rt_end->tv_nsec, 
+      time_diff_dds(tp_rt_start, tp_rt_end)->tv_sec, time_diff_dds(tp_rt_start, tp_rt_end)->tv_nsec);
   return global_size_val;
    
 }
-
-//void* control_message_listener() {
-   //TODO can be used as listener to every message and deciding what to do after that message is received
-   //can be implemented using ANY_SOURCE and MPI_ANY_TAG
-//}
 
 void* comm_listener_global_size() {
 
@@ -1961,15 +1994,17 @@ void* comm_listener_global_size() {
 
   MPI_Request* requests_901;
   MPI_Request* requests_902;
-  MPI_Status *statuses;
+  MPI_Status *statuses_901;
+  MPI_Status *statuses_902;
 
   while(1) {
 
     if (comm_rank == master_id) {
       requests_901 = (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));
       requests_902 = (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));
-      statuses = (MPI_Status*) malloc( (comm_size - 1) * sizeof(MPI_Status));
-      short consistency_type;
+      statuses_901 = (MPI_Status*) malloc( (comm_size - 1) * sizeof(MPI_Status));
+      statuses_902 = (MPI_Status*) malloc( (comm_size - 1) * sizeof(MPI_Status));
+      int consistency_type;
       
       //For testing on request and implementation of timeout for gracefull exit on receive
       MPI_Request request_test;
@@ -1979,7 +2014,7 @@ void* comm_listener_global_size() {
       //MPI_Irecv(code, 1, MPI_SHORT, comm_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &request);
       //MPI_Recv(code, 1, MPI_SHORT, comm_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
       //MPI_Recv(&buf, 1, MPI_SHORT, comm_rank, 900, MPI_COMM_WORLD, &status);
-      MPI_Irecv(&consistency_type, 1, MPI_SHORT, MPI_ANY_SOURCE, 900, MPI_COMM_WORLD, &request_test);
+      MPI_Irecv(&consistency_type, 1, MPI_INT, MPI_ANY_SOURCE, 900, MPI_COMM_WORLD, &request_test);
 
       while(1) {
         MPI_Test(&request_test, &test_flag, &status_test);
@@ -1993,6 +2028,7 @@ void* comm_listener_global_size() {
         }
         if (flag_graceful_stop) {
           //Cleanup on exit
+          //TODO CLEANUP MUST NOT DEADLOCK
           printf("Gracefully stopping global size listener thread in node %d\n", comm_rank);
           LOG_DEBUG_TD( (long) -3, "Gracefully stopping global size listener thread in node %d\n", comm_rank);
           MPI_Cancel(&request_test);
@@ -2003,21 +2039,33 @@ void* comm_listener_global_size() {
       //status.MPI_SOURCE
       //status.MPI_TAG
       int source_node = status_test.MPI_SOURCE;
+      //int recv_tag = status_test.MPI_TAG;
       GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "MASTER: Got message with consistency_type=%hd from node %d\n", consistency_type, source_node);
+      printf("MASTER: Got message with consistency_type=%hd from node %d\n", consistency_type, source_node);
       int cnt = 0;
+
+      //Send doing global size for you message
+      short code_905 = 905;
+      MPI_Send(&code_905, 1, MPI_SHORT, source_node, 905, MPI_COMM_WORLD);
       
+      int *consistency_type_src_id = (int*) malloc (2 * sizeof(int));
+      consistency_type_src_id[0] = consistency_type;
+      consistency_type_src_id[1] = source_node;
       for(int i = 0; i < comm_size; i++) {
         if (i != comm_rank) {
-          MPI_Isend(&consistency_type, 1, MPI_SHORT, i, 901, MPI_COMM_WORLD, &requests_901[cnt]);
+          MPI_Isend(consistency_type_src_id, 2, MPI_INT, i, 901, MPI_COMM_WORLD, &requests_901[cnt]);
           cnt++;
         }
       }
+
+      MPI_Waitall(comm_size - 1, requests_901, statuses_901);
+      printf("MASTER: Got all 901 from %d\n", source_node);
       
       unsigned long *node_sizes = (unsigned long*) malloc(comm_size * sizeof(unsigned long));
       unsigned long global_struct_size_total = 0;
       cnt = 0;
 
-      if ( consistency_type == 0 ) {
+      if ( consistency_type_src_id[0] == 0 ) {
         //Get inconsistent global size
         unsigned long master_struct_size = lockfree_queue_size_total();
         for (int i = 0; i < comm_size; i++) {
@@ -2030,7 +2078,8 @@ void* comm_listener_global_size() {
           }
         }
 
-        MPI_Waitall(comm_size - 1, requests_902, statuses);
+        MPI_Waitall(comm_size - 1, requests_902, statuses_902);
+        printf("MASTER: Got all 902 from %d\n", source_node);
 
         for (int i = 0; i < comm_size; i++) {
           GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "MASTER: Node %d has %ld items\n", i, node_sizes[i]);
@@ -2040,21 +2089,24 @@ void* comm_listener_global_size() {
 
         //IF master asks himself on global size
         //TODO remove printfs
-        printf("source_node=%d\n", source_node);
-        if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //printf("source_node=%d\n", source_node);
+        //if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //if ( pthread_rwlock_trywrlock(&global_size_executing_rwlock) != 0 ) {
+        if ( consistency_type_src_id[1] == comm_rank ) {
           //someone is in global_size function and has lock, just unlock queues, he will barrier
-          printf("MASTER: send no barrier\n");
+          //printf("MASTER: send no barrier\n");
           MPI_Send(&global_struct_size_total, 1, MPI_UNSIGNED_LONG, source_node, 903, MPI_COMM_WORLD);
         }
         else {
           //nobody is in global size function, I must barrier
-          printf("MASTER: send and barrier\n");
+          //printf("MASTER: send and barrier\n");
           MPI_Send(&global_struct_size_total, 1, MPI_UNSIGNED_LONG, source_node, 903, MPI_COMM_WORLD);
           MPI_Barrier(MPI_COMM_WORLD);
-          pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_executing_rwlock);
         }
       }
-      else if ( consistency_type == 1 ) {
+      else if ( consistency_type_src_id[0] == 1 ) {
         //Get consistent global size
         
         LOCK_LOAD_BALANCER();
@@ -2071,7 +2123,9 @@ void* comm_listener_global_size() {
           }
         }
 
-        MPI_Waitall(comm_size - 1, requests_902, statuses);
+        MPI_Waitall(comm_size - 1, requests_902, statuses_902);
+        printf("MASTER: Got all 902 from %d\n", source_node);
+
 
         for (int i = 0; i < comm_size; i++) {
           GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "MASTER: Node %d has %ld items\n", i, node_sizes[i]);
@@ -2081,7 +2135,9 @@ void* comm_listener_global_size() {
 
         //IF master asks himself on global size
         //printf("source_node=%d\n", source_node);
-        if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //if ( pthread_rwlock_trywrlock(&global_size_executing_rwlock) != 0 ) {
+        if ( consistency_type_src_id[1] == comm_rank ) {
           //someone is in global_size function and has lock, just unlock queues, he will barrier
           //printf("MASTER: send no barrier\n");
           MPI_Send(&global_struct_size_total, 1, MPI_UNSIGNED_LONG, source_node, 903, MPI_COMM_WORLD);
@@ -2091,26 +2147,29 @@ void* comm_listener_global_size() {
         else {
           //nobody is in global size function, I must barrier
           //printf("MASTER: send and barrier\n");
+          printf("MASTER: Sending 903 to %d\n", source_node);
           MPI_Send(&global_struct_size_total, 1, MPI_UNSIGNED_LONG, source_node, 903, MPI_COMM_WORLD);
           MPI_Barrier(MPI_COMM_WORLD);
+          printf("MASTER: finished req from %d\n",source_node);
           UNLOCK_LOCAL_QUEUES();
           UNLOCK_LOAD_BALANCER();
-          pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_executing_rwlock);
         }
       }
-      free(requests_901); free(requests_902); free(statuses); free(node_sizes);
+      free(requests_901); free(requests_902); free(statuses_901); free(statuses_902); free(node_sizes);
     }
     else { 
       //For testing on request and implementation of timeout for gracefull exit on receive
       MPI_Request request_test;
       MPI_Status status_test;
       int test_flag = 0;
-      short consistency_type;
+      int *consistency_type_src_id = (int*) malloc (2 * sizeof(int));
 
       //MPI_Irecv(code, 1, MPI_SHORT, master_id, MPI_ANY_TAG, MPI_COMM_WORLD, &request);
       //MPI_Recv(code, 1, MPI_SHORT, master_id, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
       //MPI_Recv(&buf, 1, MPI_SHORT, master_id, 901, MPI_COMM_WORLD, &status);
-      MPI_Irecv(&consistency_type, 1, MPI_SHORT, master_id, 901, MPI_COMM_WORLD, &request_test);
+      MPI_Irecv(consistency_type_src_id, 2, MPI_INT, master_id, 901, MPI_COMM_WORLD, &request_test);
 
       while(1) {
         MPI_Test(&request_test, &test_flag, &status_test);
@@ -2130,13 +2189,15 @@ void* comm_listener_global_size() {
         }
       }
 
-      GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "COMPUTE NODE: Received message with buf=%hd\n", consistency_type);
-      if ( consistency_type == 0 ) {
+      GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "COMPUTE NODE: Received 901 - consistency %d, src_node %d\n", consistency_type_src_id[0], consistency_type_src_id[1]);
+      if ( consistency_type_src_id[0] == 0 ) {
 
         unsigned long local_size = lockfree_queue_size_total();
         MPI_Send(&local_size, 1, MPI_UNSIGNED_LONG, master_id, 902, MPI_COMM_WORLD);
 
-        if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //if ( pthread_rwlock_trywrlock(&global_size_executing_rwlock) != 0 ) {
+        if ( consistency_type_src_id[1] == comm_rank ) {
           //someone is in global_size function and has lock, just unlock queues, he will barrier
           //printf("Slave no barrier\n");
         }
@@ -2144,10 +2205,11 @@ void* comm_listener_global_size() {
           //nobody is in global size function, I must barrier
           //printf("Slave barrier\n");
           MPI_Barrier(MPI_COMM_WORLD);
-          pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_executing_rwlock);
         }
       }
-      else if ( consistency_type == 1 ) {
+      else if ( consistency_type_src_id[0] == 1 ) {
         LOCK_LOAD_BALANCER();
         LOCK_LOCAL_QUEUES();
 
@@ -2155,7 +2217,9 @@ void* comm_listener_global_size() {
         MPI_Send(&local_size, 1, MPI_UNSIGNED_LONG, master_id, 902, MPI_COMM_WORLD);
 
         //TODO MUST WAIT FOR GLOBAL BALANCE TO FINISH IF IT IS EXECUTING --> HAS WLOCK
-        if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
+        //if ( pthread_rwlock_trywrlock(&global_size_executing_rwlock) != 0 ) {
+        if ( consistency_type_src_id[1] == comm_rank ) {
           //someone is in global_size function and has lock, just unlock queues, he will barrier
           //printf("Slave no barrier\n");
           UNLOCK_LOCAL_QUEUES();
@@ -2167,7 +2231,8 @@ void* comm_listener_global_size() {
           MPI_Barrier(MPI_COMM_WORLD);
           UNLOCK_LOAD_BALANCER();
           UNLOCK_LOCAL_QUEUES();
-          pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_rwlock);
+          //pthread_rwlock_unlock(&global_size_executing_rwlock);
         }
       }
     }
@@ -2182,11 +2247,13 @@ int global_balance(long tid) {
   
   if ( pthread_rwlock_trywrlock(&load_balance_global_rwlock) != 0 ) {
     //Got lock
-    if ( time_diff_dds(balance_start_time, last_global_rebalance_time)->tv_sec > 0 ) {
+    printf("Got lock on global balance\n");
+    if ( time_diff_dds(balance_start_time, last_global_rebalance_time)->tv_nsec > 500000000 ) {
       //Last rebalance was more than one second ago, do rebalance again
-      
+      printf("Last GB was more than 0.5sec ago\n");
       clock_gettime(CLOCK_REALTIME, last_global_rebalance_time);
       GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Starting global balance in %ld.%ld\n", last_global_rebalance_time->tv_sec, last_global_rebalance_time->tv_nsec);
+      printf("Starting global balance in %ld.%ld\n", last_global_rebalance_time->tv_sec, last_global_rebalance_time->tv_nsec);
       atomic_fetch_add(&load_balancer_call_count_global, 1);
 
       short buf;
@@ -2194,20 +2261,24 @@ int global_balance(long tid) {
       short code_800 = 800;
       MPI_Send(&code_800, 1, MPI_SHORT, master_id, 800, MPI_COMM_WORLD);
       MPI_Recv(&buf, 1, MPI_INT, master_id, 805, MPI_COMM_WORLD, &status); // Balancing finished
+      printf("Balancing finished, unlock RWLock\n");
       pthread_rwlock_unlock(&load_balance_global_rwlock);
 
     }
     else {
+      printf("GB was less than 0.5sec ago\n");
       pthread_rwlock_unlock(&load_balance_global_rwlock);
       return 1; //Rebalance time not more than 1 second
     }
   }
   else {
+    printf("Global balance already locked, waiting to finish\n");
     GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Global balance already locked, waiting to finish\n");
     if ( pthread_rwlock_rdlock(&load_balance_global_rwlock) != 0 ) {
       return -1;  // Error in rdlock
     }
     else {
+      printf("Global balance finished\n");
       pthread_rwlock_unlock(&load_balance_global_rwlock);
       return 2; //Rebalance already started, waiting for results and returning
     }
@@ -2216,6 +2287,8 @@ int global_balance(long tid) {
 
   clock_gettime(CLOCK_REALTIME, balance_end_time);
   GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Global balance time was %lu.%lu\n", 
+    time_diff_dds(balance_start_time, balance_end_time)->tv_sec, time_diff_dds(balance_start_time, balance_end_time)->tv_nsec);
+  printf("Global balance time was %lu.%lu\n", 
     time_diff_dds(balance_start_time, balance_end_time)->tv_sec, time_diff_dds(balance_start_time, balance_end_time)->tv_nsec);
 
   return 0; //Rebalance finished successfuly
@@ -2238,6 +2311,7 @@ void* comm_listener_global_balance() {
 
   if ( comm_rank == master_id ) {
     //MASTER
+    printf("Master listening on comm_rank %d\n", comm_rank);
     while(1) {
       
       MPI_Request request;
@@ -2265,6 +2339,7 @@ void* comm_listener_global_balance() {
         }
       }
       
+      printf("Master got GB request\n");
       MPI_Request *requests_801 = (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));;
       int source_node = status.MPI_SOURCE;
       short msg = 0;
@@ -2545,10 +2620,10 @@ qsizes* lockfree_queue_size_total_allarr_sorted () {
   qsort(qss, queue_count, sizeof(qsizes), qsize_comparator);
 
   //TODO DELETE AFTER TEST
-  printf("Sorted array: \n");
+  /*printf("Sorted array: \n");
   for (int i = 0; i < queue_count; i++) {
     printf("\tQ[%ld] - %lu\n", qss[i].index, qss[i].size);
-  }
+  }*/
 
   return qss;
 }
@@ -2580,6 +2655,36 @@ bool lockfree_queue_same_size() {
 
 void lockfree_queue_stop_watcher() {
 
+  //int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
+  //          MPI_Comm comm, MPI_Status *status)
+  //int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source,
+  //          int tag, MPI_Comm comm, MPI_Request *request)
+  //int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+  //          MPI_Comm comm, MPI_Request *request)
+  //int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+  //          MPI_Comm comm)
+
+  MPI_Status status;
+  short buf;
+  if ( comm_size > 1 ) {
+    if ( comm_rank == master_id ) {
+      for (int i = 0; i < comm_size; i++) {
+        if (i != comm_rank) {
+          MPI_Recv(&buf, 1, MPI_SHORT, i, 1000, MPI_COMM_WORLD, &status);
+        }
+      }
+      for (int i = 0; i < comm_size; i++) {
+        if (i != comm_rank) {
+          MPI_Send(&buf, 1, MPI_SHORT, i, 1001, MPI_COMM_WORLD);
+        }
+      }
+    }
+    else {
+      MPI_Send(&buf, 1, MPI_SHORT, master_id, 1000, MPI_COMM_WORLD);
+      MPI_Recv(&buf, 1, MPI_SHORT, master_id, 1001, MPI_COMM_WORLD, &status);
+    }
+  }
+
   if ( qsize_watcher_t_enable == true ) {
     flag_watcher_graceful_stop = true;
     pthread_join(qsize_watcher_t, NULL);
@@ -2592,16 +2697,16 @@ void lockfree_queue_stop_watcher() {
   //pthread_join(local_struct_cleanup_t, NULL);
 
   LOG_INFO_TD("STATISTICS: \n\tQsize watcher was called %lu times\n\tLoad balance was called from remove %lu times\
-    \n\tGlobal balance was initiated %lu times\n\tLocal balance moved %lu items\n", atomic_load(&load_balancer_call_count_watcher),
-    atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), 
-    atomic_load(&moved_items_log));
+    \n\tGlobal balance was initiated %lu times\n\tGlobal size was executed %lu times\n\tGlobal size only read last value %lu times\n\tLocal balance moved %lu items\n", atomic_load(&load_balancer_call_count_watcher), atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), 
+    atomic_load(&global_size_call_count), atomic_load(&global_size_call_count_in_wait), atomic_load(&moved_items_log));
 
-  double sum_rt_time = sum_time(total_rt_lb_time_sec, total_rt_lb_time_nsec);
+  //double sum_rt_time = sum_time(total_rt_lb_time_sec, total_rt_lb_time_nsec);
   double sum_thr_time = sum_time(total_thr_lb_time_sec, total_thr_lb_time_nsec);
-  LOG_INFO_TD("\tTotal realtime spent in load balancer: %lf seconds\
-    \n\tTotal Thread time spent in load balancer: %lf seconds\n", sum_rt_time, sum_thr_time);
+  /*LOG_INFO_TD("\tTotal realtime spent in load balancer: %lf seconds\
+    \n\tTotal Thread time spent in load balancer: %lf seconds\n", sum_rt_time, sum_thr_time);*/
+  LOG_INFO_TD("\tTotal Thread time spent in load balancer: %lf seconds\n", sum_thr_time);
    
-  sum_rt_time = sum_time(total_rt_global_size_time_sec, total_rt_global_size_time_nsec);
+  double sum_rt_time = sum_time(total_rt_global_size_time_sec, total_rt_global_size_time_nsec);
   sum_thr_time = sum_time(total_thr_global_size_time_sec, total_thr_global_size_time_nsec);
   LOG_INFO_TD("\tTotal realtime spent in global size: %lf seconds\
     \n\tTotal thread time spent in global size: %lf seconds\n", sum_rt_time, sum_thr_time);
@@ -2820,9 +2925,9 @@ void* local_struct_cleanup() {
 
 double sum_time(time_t sec, long nsec) {
 
-  double final_time = (double) 0;
+  double final_time = (double) 0.00;
   final_time += (double) sec;
-  final_time += (double) nsec / (double) 1000000000L;
+  final_time += (double) nsec / (double) 1000000000;
   return final_time;
 
 }
