@@ -161,7 +161,7 @@ void *work(void *arg_struct) {
   clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_start);
   LOG_DEBUG_TD(*tid, "START PROGRAM: \n\tRealtime - %lu.%lu seconds\n\tProcess Time - %lu.%lu seconds\n",
     tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec);
-  LOG_DEBUG_TD(*tid, "\tThread %ld has ID %lu, insertion ratio %d and remove ratio\n", 
+  LOG_DEBUG_TD(*tid, "\tThread %ld has ID %lu, insertion ratio %d and remove ratio %d\n", 
     *tid, pthread_tid, q_ins_ratios[*tid / 2], q_rm_ratios[*tid / 2] );
 
   struct stat st = {0};
@@ -169,24 +169,33 @@ void *work(void *arg_struct) {
     mkdir("/tmp/distributed_queue", 0777);
   }
 
-  char filename_ins[40] = "/tmp/distributed_queue/work_";
-  char filename_rm[40] = "/tmp/distributed_queue/work_";
-  char tid_str[4];
-  char ins[4] = "ins";
-  char rm[3] = "rm";
+  pid_t pid = getpid();
+  int pid_int = (int) pid;
+  char pid_str[8];
+  sprintf(pid_str, "%d", pid_int);
 
-  sprintf(tid_str, "%ld", *tid);
-  strcat(filename_ins, tid_str);
-  strcat(filename_rm, tid_str);
+  char filename_ins[60] = "/tmp/distributed_queue/work_";
+  char filename_rm[60] = "/tmp/distributed_queue/work_";
+  char tid_str[4];
+  char ins[5] = "ins_";
+  char rm[4] = "rm_";
 
   strcat(filename_ins, ins);
+  strcat(filename_rm, rm);
+
+  sprintf(tid_str, "%ld_", *tid);
+  strcat(filename_ins, tid_str);
+  strcat(filename_rm, tid_str);
+  strcat(filename_ins, pid_str);
+  strcat(filename_rm, pid_str);
+
+
   FILE *work_file_ins = fopen(filename_ins, "wb");
   if ( work_file_ins == NULL ) {
     LOG_ERR_T(*tid, "ERROR: error in opening file %s\n", filename_ins);
     exit(-1);
   }
 
-  strcat(filename_rm, rm);
   FILE *work_file_rm = fopen(filename_rm, "wb");
   if ( work_file_rm == NULL ) {
     LOG_ERR_T(*tid, "ERROR: error in opening file %s\n", filename_rm);
@@ -213,10 +222,10 @@ void *work(void *arg_struct) {
       return NULL;
     }
 
-    if ( fprintf(work_file_ins, "Hello from insertion work thread - T%ld(id=%lu), my insertion range is %u-%u\n", 
+    /*if ( fprintf(work_file_ins, "Hello from insertion work thread - T%ld(id=%lu), my insertion range is %u-%u\n", 
       *tid, pthread_tid, lowRange, highRange) < 0 ) {
       LOG_ERR_T(*tid, "ERROR: cannot write to file %s\n", filename_ins);
-    }
+    }*/
 
     int *rn;
     int x = 0;
@@ -263,10 +272,10 @@ void *work(void *arg_struct) {
       return NULL;
     }
 
-    if ( fprintf(work_file_rm, "Hello from removing work thread - T%ld(id=%lu), my insertion range is %u-%u\n", 
+    /*if ( fprintf(work_file_rm, "Hello from removing work thread - T%ld(id=%lu), my insertion range is %u-%u\n", 
       *tid, pthread_tid, lowRange, highRange) < 0 ) {
       LOG_ERR_T(*tid, "ERROR: cannot write to file %s\n", filename_rm);
-    }
+    }*/
 
     //If ratio is 0 end consumer thread
     if ( q_rm_ratios[*tid / 2] == 0 ) {

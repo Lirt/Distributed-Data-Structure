@@ -552,7 +552,7 @@ int main(int argc, char** argv) {
     //atomic_init(&total_sum_ins, 0);
 
     //struct lockfree_queue_args_struct *lqa;
-  pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
+  pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int*), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
     global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook);
 

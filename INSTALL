@@ -9,3 +9,12 @@ mpirun -npernode 4 ./test
 
 
 mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -l true --q1-ratio=9 --q2-ratio=8 --q3-ratio=7 --q4-ratio=12 --local-threshold-type=dynamic --local-balance-type=all
+
+free && sync && echo 3 > /proc/sys/vm/drop_caches && free
+earlyoom -i -m 40 -s 100
+mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=pair
+
+
+cat *rm_ > x_rm; sort x_rm > x_rm_s
+cat *ins_ > x_ins; sort x_ins > x_ins_s
+diff x_rm_s x_ins_s
