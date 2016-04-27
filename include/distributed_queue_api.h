@@ -36,8 +36,9 @@ extern void lockfree_queue_insert_item_no_lock(void *val);
 extern void lockfree_queue_insert_item_by_tid (void *t, void* val);
 extern void lockfree_queue_insert_item_by_tid_no_lock(void *t, void* val);
 extern void lockfree_queue_insert_N_items(void** values, int item_count);
-extern void* lockfree_queue_remove_item(int timeout);
-extern void* lockfree_queue_remove_item_by_tid (void* t, int timeout);
+extern int lockfree_queue_remove_item(void* buffer);
+extern int lockfree_queue_remove_item_by_tid (void* t, void* buffer);
+extern int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** buffer);
 
 /******************
  * TESTING PURPOSES

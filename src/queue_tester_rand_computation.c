@@ -66,7 +66,6 @@ const char *argp_program_bug_address = "ondrej.vaskoo@gmail.com";
 static char doc[] = "DQS by Ondrej Vasko";
 
 atomic_ulong finished;
-atomic_ulong total_inserts;
 atomic_ulong total_removes;
 atomic_int np;
 atomic_int nc;
@@ -147,8 +146,6 @@ void *work(void *arg_struct) {
   *qid = *tid/2;
   //int q_count = args->q_count;
   //int t_count = args->t_count;
-  int comm_rank = MPI_Comm_rank(MPI_COMM_WORLD, &comm_rank);
-  unsigned long pthread_tid = pthread_self();
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_start_insert = (struct timespec*) malloc (sizeof (struct timespec));
@@ -162,7 +159,7 @@ void *work(void *arg_struct) {
   LOG_DEBUG_TD(*tid, "START PROGRAM: \n\tRealtime - %lu.%lu seconds\n\tProcess Time - %lu.%lu seconds\n",
     tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec);
   LOG_DEBUG_TD(*tid, "\tThread %ld has ID %lu, insertion ratio %d and remove ratio %d\n", 
-    *tid, pthread_tid, q_ins_ratios[*tid / 2], q_rm_ratios[*tid / 2] );
+    *tid, pthread_self(), q_ins_ratios[*tid / 2], q_rm_ratios[*tid / 2] );
 
   struct stat st = {0};
   if (stat("/tmp/distributed_queue", &st) == -1) {
@@ -205,9 +202,11 @@ void *work(void *arg_struct) {
  /*
   * Set ranges for insertion of random numbers according to q_ins_ratios set in command line arguments
   */
-  unsigned int lowRange, highRange;
-  lowRange = 0;
-  highRange = computation_load;
+  unsigned int lowRange;
+  lowRange = 1;
+  //unsigned int highRange;
+  //highRange = computation_load;
+
 
   clock_gettime(CLOCK_REALTIME, tp_rt_start_insert);
   if ( *tid % 2 == 0 ) {
@@ -222,11 +221,6 @@ void *work(void *arg_struct) {
       return NULL;
     }
 
-    /*if ( fprintf(work_file_ins, "Hello from insertion work thread - T%ld(id=%lu), my insertion range is %u-%u\n", 
-      *tid, pthread_tid, lowRange, highRange) < 0 ) {
-      LOG_ERR_T(*tid, "ERROR: cannot write to file %s\n", filename_ins);
-    }*/
-
     int *rn;
     int x = 0;
 
@@ -238,9 +232,9 @@ void *work(void *arg_struct) {
         continue;
 
       NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
-      //atomic_fetch_add( &total_inserts, 1);
       n_inserted_arr[*tid / 2]++;
       lockfree_queue_insert_item_by_tid(qid, rn);
+      free(rn);
 
       x++;
       if (x == 5000) {
@@ -272,28 +266,25 @@ void *work(void *arg_struct) {
       return NULL;
     }
 
-    /*if ( fprintf(work_file_rm, "Hello from removing work thread - T%ld(id=%lu), my insertion range is %u-%u\n", 
-      *tid, pthread_tid, lowRange, highRange) < 0 ) {
-      LOG_ERR_T(*tid, "ERROR: cannot write to file %s\n", filename_rm);
-    }*/
-
-    //If ratio is 0 end consumer thread
     if ( q_rm_ratios[*tid / 2] == 0 ) {
       fclose(work_file_ins);
       fclose(work_file_rm);
       return NULL;
     }
 
-    int timeout = 0;
-    int *retval;
+    int ret;
+    //int n = 5;
     while(1) {
-      retval = lockfree_queue_remove_item_by_tid(qid, timeout);
+      //int *retval = (int*) malloc(sizeof(int));
+      int *retval;
+      ret = lockfree_queue_remove_item_by_tid(qid, retval);
+      /*void **retvals = malloc(sizeof(void*));
+      ret = lockfree_queue_remove_Nitems_no_lock_by_tid(*qid, n, retvals);*/
 
-      if (retval == NULL) {
+      if (ret == -1) {
         unsigned long size = lockfree_queue_size_total();
         if (size == 0) {
           unsigned long global_size_val = global_size(true);
-          
           if ( global_size_val == 0 ) {
             unsigned long fin = atomic_load( &finished );
             if ( fin != queue_count_arg ) {
@@ -301,53 +292,41 @@ void *work(void *arg_struct) {
             }
             else {
               clock_gettime(CLOCK_REALTIME, tp_rt_end);
-              clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_end);
               clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
 
-              LOG_DEBUG_TD(*tid, "END PROGRAM: \n\tRealtime - %lu.%lu seconds\n\tProcess Time - %lu.%lu seconds\
-                \n\tThread Time - %lu.%lu seconds\n", tp_rt_end->tv_sec, tp_rt_end->tv_nsec, tp_proc_end->tv_sec, tp_proc_end->tv_nsec, 
-                tp_thr->tv_sec, tp_thr->tv_nsec);
-
-              //LOG_DEBUG_TD(*tid, "Total sum of removed items is %lu\n", atomic_load(&total_sum_rm));
-              LOG_DEBUG_TD(*tid, "Total sum of removal thread items is %lu\n", sum_array(sums));
-              //LOG_DEBUG_TD(*tid, "Total removed items %lu\n", atomic_load(&total_removes));
+              LOG_DEBUG_TD(*tid, "Total sum of removed items for T[%ld] is %lu\n", *tid, sum_array(sums));
               LOG_DEBUG_TD(*tid, "Total removed items %lu\n", sum_array(n_removed_arr));
               LOG_DEBUG_TD(*tid, "Final realtime program time = %lu.%lu\n", 
                 time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-              LOG_DEBUG_TD(*tid, "Final process time = %lu.%lu\n", 
-                time_diff(tp_proc_start, tp_proc_end)->tv_sec, time_diff(tp_proc_start, tp_proc_end)->tv_nsec );
 
               LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid/2]);
               LOG_INFO_TD("\tT[%ld]: Sum of items %lu\n", *tid, sums[*tid/2]);
-              LOG_INFO_TD("Total sum of removal thread items is %lu\n", sum_array(sums));
-              //LOG_INFO_TD("Total removed items %lu\n", atomic_load(&total_removes));
+              LOG_INFO_TD("Total sum of removed items is %lu\n", sum_array(sums));
               LOG_INFO_TD("Total removed items %lu\n", sum_array(n_removed_arr));
               LOG_INFO_TD("Final realtime program time = %lu.%lu\n", 
                 time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-              LOG_INFO_TD("Final process time = %lu.%lu\n", 
-                time_diff(tp_proc_start, tp_proc_end)->tv_sec, time_diff(tp_proc_start, tp_proc_end)->tv_nsec );
 
               fclose(work_file_ins);
               fclose(work_file_rm);
 
               return NULL;
             }
-          }//GLOBAL SIZE
-        }//LOCAL SIZE
-      }//RETVAL NULL
+          } //GLOBAL SIZE
+        } //LOCAL SIZE
+      } //RETVAL NULL
       else {
         NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
         n_removed_arr[*tid/2]++;
         sums[*tid/2] += *retval;
-        
-        /*unsigned long p = (unsigned long) pow(2, *retval);
-        for (int j = 0; j < p; j++) {
-          log((double) j);
-        }*/
-
-        //atomic_fetch_add( &total_sum_rm, *retval);
-        //atomic_fetch_add( &total_removes, 1);
-        free(retval);
+        //free(retval);
+        /*for (int k = 0; k < n; k++) {
+          int *val = retvals[k];
+          NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *val);
+          n_removed_arr[*tid/2]++;
+          sums[*tid/2] += *val;
+          //printf("Remove: '%d'", *val);
+        }
+        free(retvals);*/
       }
     }
   }

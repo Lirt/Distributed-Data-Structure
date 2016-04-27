@@ -894,43 +894,57 @@ void lockfree_queue_free(void *queue_id) {
    
 }
 
-void lockfree_queue_insert_item (void* val) {
+int lockfree_queue_insert_item (void* val) {
 
-   long tid = getInsertionTid();
-   struct ds_lockfree_queue *q = queues[ tid ];
+ /*
+  * Free is done in function
+  * User must free only his value *val
+  */
 
-   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-   if (item == NULL) {
-      LOG_ERR_T( (long) tid, "Malloc failed\n");
-   }
-   struct lockfree_queue_item *tmp;
-   item->val = val;
-   //item->val = malloc(sizeof(void*));
-   //memcpy(item->val, val, q->item_size);
-   item->next = NULL;
-   pthread_mutex_lock(&add_mutexes[tid]);
-   
-   //set next and swap pointer to tail
-   q->tail->next = item;
-   
-   //q-tail setting is critical section
-   q->tail = q->tail->next;
-   
-   //increment Q size
-   atomic_fetch_add( &(q->a_qsize), 1);
-   #ifdef COUNTERS
-    atomic_fetch_add( &ins_count, 1);
-   #endif
+  long tid = getInsertionTid();
+  struct ds_lockfree_queue *q = queues[ tid ];
 
-   //cleanup
-   while ( q->head != q->divider ) {
-      tmp = q->head;
-      q->head = q->head->next;
-      //free(tmp->val); //allocated in main - can not free here
-      free(tmp);
-   }
+  struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+  if (item == NULL) {
+    fprintf(stdout, "ERROR: Malloc failed\n");
+    LOG_ERR_T( (long) tid, "Malloc failed\n");
+    return -1;
+  }
+  struct lockfree_queue_item *tmp;
 
-   pthread_mutex_unlock(&add_mutexes[tid]);
+  item->val = malloc(sizeof(void*));
+  if (item->val == NULL) {
+    fprintf(stdout, "ERROR: Malloc failed\n");
+    LOG_ERR_T( (long) tid, "Malloc failed\n");
+    return -1;
+  }
+  memcpy(item->val, val, q->item_size);
+
+  item->next = NULL;
+  pthread_mutex_lock(&add_mutexes[tid]);
+
+  //set next and swap pointer to tail
+  q->tail->next = item;
+
+  //q-tail setting is critical section
+  q->tail = q->tail->next;
+
+  atomic_fetch_add( &(q->a_qsize), 1);
+  #ifdef COUNTERS
+  atomic_fetch_add( &ins_count, 1);
+  #endif
+
+  //cleanup
+  while ( q->head != q->divider ) {
+    tmp = q->head;
+    q->head = q->head->next;
+    //free(tmp->val); //allocated in main - can not free here
+    free(tmp);
+  }
+
+  pthread_mutex_unlock(&add_mutexes[tid]);
+  return 0;
+
 }
 
 void lockfree_queue_insert_item_no_lock (void* val) {
@@ -943,9 +957,9 @@ void lockfree_queue_insert_item_no_lock (void* val) {
       LOG_ERR_T( (long) tid, "Malloc failed\n");
    }
    struct lockfree_queue_item *tmp;
-   item->val = val;
-   //item->val = malloc(sizeof(void*));
-   //memcpy(item->val, val, q->item_size);
+   //item->val = val;
+   item->val = malloc(sizeof(void*));
+   memcpy(item->val, val, q->item_size);
    item->next = NULL;
    
    //set next and swap pointer to tail
@@ -982,7 +996,9 @@ void lockfree_queue_insert_item_by_tid (void *t, void* val) {
    }
 
    struct lockfree_queue_item *tmp;
-   item->val = val;
+   //item->val = val;
+   item->val = malloc(sizeof(void*));
+   memcpy(item->val, val, q->item_size);
    item->next = NULL;
    pthread_mutex_lock(&add_mutexes[*tid]);
    
@@ -1002,6 +1018,7 @@ void lockfree_queue_insert_item_by_tid (void *t, void* val) {
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
+      //free(tmp->val);
       free(tmp);
    }
    
@@ -1019,7 +1036,9 @@ void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
       LOG_ERR_T( (long) tid, "Malloc failed\n");
    }
    struct lockfree_queue_item *tmp;
-   item->val = val;
+   //item->val = val;
+   item->val = malloc(sizeof(void*));
+   memcpy(item->val, val, q->item_size);
    item->next = NULL;
    
    //set next and swap pointer to tail
@@ -1038,6 +1057,7 @@ void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
+      //free(tmp->val);
       free(tmp);
    }
    
@@ -1067,7 +1087,9 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
       return;
    }
 
-   item->val = values[0];
+   //item->val = values[0];
+   item->val = malloc(sizeof(void*));
+   memcpy(item->val, values[0], q->item_size);
    item_first = item;
 
    for (int i = 1; i < item_count; i++) {
@@ -1076,7 +1098,9 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
          LOG_ERR_T( (long) tid, "Malloc failed\n");
          return;
       }
-      item_tmp->val = values[i];
+      //item_tmp->val = values[i];
+      item_tmp->val = malloc(sizeof(void*));
+      memcpy(item_tmp->val, values[i], q->item_size);
       item->next = item_tmp;
       item = item->next;
    }
@@ -1101,6 +1125,7 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
+      //free(tmp->val);
       free(tmp);
    }
    
@@ -1117,12 +1142,12 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
     return;
   }
 
-  fprintf(stdout, "InsertNItems: \n");
+  fprintf(stdout, "InsertNItems(%d): \n", item_count);
   for (int i = 0; i < item_count; i++) {
     int *v = values[i];
     fprintf(stdout, "%p--%d\n", v, *v);
+    fflush(stdout);
   }
-  fflush(stdout);
 
   long *tid = qid;
   struct ds_lockfree_queue *q = queues[ *tid ];
@@ -1134,11 +1159,15 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
   item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
 
   if (item == NULL) {
+    fprintf(stdout, "ERROR: Malloc failed in insert_N_items_no_lock_by_tid\n");
+    fflush(stdout);
     LOG_ERR_T( (long) tid, "Malloc failed\n");
     return;
   }
 
-  item->val = values[0];
+  //item->val = values[0];
+  item->val = malloc(sizeof(void*));
+  memcpy(item->val, values[0], q->item_size);
   item_first = item;
 
   for (int i = 1; i < item_count; i++) {
@@ -1147,7 +1176,9 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
       LOG_ERR_T( (long) tid, "Malloc failed\n");
       return;
     }
-    item_tmp->val = values[i];
+    //item_tmp->val = values[i];
+    item_tmp->val = malloc(sizeof(void*));
+    memcpy(item_tmp->val, values[i], q->item_size);
     item->next = item_tmp;
     item = item->next;
   }
@@ -1170,6 +1201,7 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
   while ( q->head != q->divider ) {
     tmp = q->head;
     q->head = q->head->next;
+    //free(tmp->val);
     free(tmp);
   }
    
@@ -1713,7 +1745,7 @@ void* qsize_watcher_local_threshold_strategy() {
 
 }
 
-void* lockfree_queue_remove_item (int timeout) {
+int lockfree_queue_remove_item (void* buffer) {
 
  /*
   * timeout is in microseconds
@@ -1785,11 +1817,17 @@ void* lockfree_queue_remove_item (int timeout) {
     }
   #endif
 
-  return val;
+  if (val != NULL) {
+    memcpy(buffer, val, q->item_size);
+    return 0;
+  }
+  else {
+    return -1;
+  } 
    
 }
 
-void* lockfree_queue_remove_item_by_tid (void* t, int timeout) {
+int lockfree_queue_remove_item_by_tid (void* t, void* buffer) {
 
   void* val = NULL;
   long* tid = t;
@@ -1856,11 +1894,17 @@ void* lockfree_queue_remove_item_by_tid (void* t, int timeout) {
     }
   #endif
 
-  return val;
+  if (val != NULL) {
+    memcpy(buffer, val, q->item_size);
+    return 0;
+  }
+  else {
+    return -1;
+  } 
    
 }
 
-void* lockfree_queue_remove_item_by_tid_no_lock (void* t, int timeout) {
+int lockfree_queue_remove_item_by_tid_no_lock (void* t, void* buffer) {
 
    void* val = NULL;
    long* tid = t;
@@ -1881,88 +1925,97 @@ void* lockfree_queue_remove_item_by_tid_no_lock (void* t, int timeout) {
       ;
    }
    
-   return val;
+  //buffer = malloc(sizeof(void*));
+  memcpy(buffer, val, q->item_size);
+
+  return 0;
+
 }
 
 
-void** lockfree_queue_remove_Nitems (unsigned long N, int timeout) {
+int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
    
-   /*
-    * N is amount of items to be taken from Q
-    */
-    //TODO TEST
+ /*
+  * N is amount of items to be taken from Q
+  */
+  //TODO TEST
    
-   long tid = getRemovalTid();
-   void **val_arr = malloc(N * sizeof(void*));
-   if (val_arr == NULL)
-      LOG_DEBUG_TD( tid, "Malloc failed\n");
-   
-   volatile struct ds_lockfree_queue *q = queues[ tid ];
-   
-   pthread_mutex_lock(&rm_mutexes[tid]);
-   
-   //unsigned long item_count = atomic_load( &(q->a_qsize) ); 
-   if ( atomic_load( &(q->a_qsize) ) < N ) {
-      //printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, item_count, N);
-      //LOG_DEBUG_TD("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, item_count, N);
-      pthread_mutex_unlock(&rm_mutexes[tid]);
-      return NULL;
-   }
-   
-   unsigned long i = 0;
-   for (i = 0; i < N; i++) {
-      if ( q->divider != q->tail ) {
-         val_arr[i] = q->divider->next->val;
-         q->divider = q->divider->next;
-      }
-      else {
-         break;
-      }
-   }
-
-   if (i != N) {
-      //printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
-      LOG_DEBUG_TD(tid, "Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
-      pthread_mutex_unlock(&rm_mutexes[tid]);
-      return NULL;
-   }
-   
-   atomic_fetch_sub( &(q->a_qsize), N);
-   pthread_mutex_unlock(&rm_mutexes[tid]);
-   return val_arr;
-   
-}
-
-void** lockfree_queue_remove_Nitems_to_arr(long qid, long item_cnt) {
-   
-  fprintf(stdout, "Allocating %ld void* pointers\n", item_cnt);
-  fflush(stdout);
-  void **val_arr = malloc(item_cnt * sizeof(void*));
-  /*if (val_arr == NULL) {
+  long tid = getRemovalTid();
+  void **val_arr = malloc(N * sizeof(void*));
+  if (val_arr == NULL) {
     printf("removeN malloc failed\n");
     LOG_DEBUG_TD( tid, "Malloc failed\n");
-    return NULL;
-  }*/
-  
-  struct ds_lockfree_queue *q = queues[ qid ];
-   
-  unsigned long qsize = atomic_load( &(q->a_qsize) );
-  fprintf(stdout, "queue[%ld] size is %lu\n", qid, qsize);
-  fflush(stdout);
-  if ( atomic_load( &(q->a_qsize) ) < item_cnt ) {
-    printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", qid, qsize, item_cnt);
-    LOG_DEBUG_TD(qid, "Not enough items in queue %ld. There are %ld but was requested %ld.\n", qid, qsize, item_cnt);
-    return NULL;
+    return -1;
   }
+   
+  struct ds_lockfree_queue *q = queues[ tid ];
+   
+  pthread_mutex_lock(&rm_mutexes[tid]);
+  
+  unsigned long qsize = atomic_load( &(q->a_qsize) );
+  if ( qsize < N ) {
+    //printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
+    LOG_DEBUG_TD(tid, "Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
+    pthread_mutex_unlock(&rm_mutexes[tid]);
+    return -1;
+  }
+   
+  unsigned long i = 0;
+  for (i = 0; i < N; i++) {
+    if ( q->divider != q->tail ) {
+      //val_arr[i] = q->divider->next->val;
+      //memcpy(val_arr[i], q->divider->next->val, sizeof(int*));
+      memcpy(buffer[i], q->divider->next->val, q->item_size);
+      q->divider = q->divider->next;
+    }
+    else {
+      break;
+    }
+  }
+
+  if (i != N) {
+    //printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
+    LOG_DEBUG_TD(tid, "Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
+    pthread_mutex_unlock(&rm_mutexes[tid]);
+    return -1;
+  }
+
+  atomic_fetch_sub( &(q->a_qsize), N);
+  pthread_mutex_unlock(&rm_mutexes[tid]);
+
+  return 0;
+   
+}
+
+int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** buffer) {
+   
+  struct ds_lockfree_queue *q = queues[ qid ];
+
+  unsigned long qsize = atomic_load( &(q->a_qsize) );
+  if ( qsize < item_cnt ) {
+    //printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", qid, qsize, item_cnt);
+    LOG_DEBUG_TD(qid, "Not enough items in queue %ld. There are %ld but was requested %ld.\n", qid, qsize, item_cnt);
+    return -1;
+  }
+
+  //void **val_arr = malloc(item_cnt * sizeof(void*));
+  //buffer = malloc(item_cnt * sizeof(void*));
+  /*if (val_arr == NULL) {
+    fprintf(stderr, "removeN malloc failed\n");
+    LOG_DEBUG_TD( qid, "Malloc failed\n");
+    return -1;
+  }*/
    
   unsigned long i;
   for (i = 0; i < item_cnt; i++) {
     if ( q->divider != q->tail ) {
-      val_arr[i] = malloc(sizeof(int*));
+      //val_arr[i] = malloc(sizeof(int*));
+      //buffer[i] = malloc(sizeof(void*));
       //memcpy(val_arr[i], q->divider->next->val, q->item_size);
       //memcpy(val_arr + i, q->divider->next->val, q->item_size);
       //memcpy(val_arr + i, q->divider->next->val, sizeof(int*));
-      memcpy(val_arr[i], q->divider->next->val, sizeof(int*));
+      //memcpy(val_arr[i], q->divider->next->val, sizeof(int*));
+      memcpy(buffer[i], q->divider->next->val, q->item_size);
       //memcpy(val_arr + i, q->divider->next->val, sizeof(int*));
       q->divider = q->divider->next;
     }
@@ -1982,11 +2035,12 @@ void** lockfree_queue_remove_Nitems_to_arr(long qid, long item_cnt) {
   if ( i != item_cnt ) {
     printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", qid, i);
     LOG_DEBUG_TD(qid, "Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", qid, i);
-    return NULL;
+    return -1;
   }
   
   atomic_fetch_sub( &(q->a_qsize), item_cnt);
-  return val_arr;
+  
+  return 0;
 
 }
 
@@ -2008,7 +2062,7 @@ unsigned long global_size(bool consistency) {
   //alebo global_size_not_consistent
   //TODO Test viac nodov
 
-  if (comm_size == 1) {
+  if (comm_size <= 1) {
     return lockfree_queue_size_total();
   }
 
@@ -2363,6 +2417,10 @@ void* comm_listener_global_size() {
 
 int global_balance(long tid) {
 
+  if (comm_size <= 1) {
+    return 0;
+  }
+
   struct timespec *balance_start_time = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *balance_end_time = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, balance_start_time);
@@ -2523,6 +2581,10 @@ void* comm_listener_global_balance() {
 
         printf("Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
         LOAD_BALANCE_LOG_DEBUG_TD("Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
+        
+        if (indexes[0] == indexes[1]) {
+          continue;
+        }
 
         wts[indexes[0]].send_count += 1;
         wts[indexes[0]].dst_node_ids = (long*) realloc(wts[indexes[0]].dst_node_ids, wts[indexes[0]].send_count * sizeof(long));
@@ -2625,6 +2687,8 @@ void* comm_listener_global_balance() {
             //fprintf(stdout, "%d\n", v);
             //fprintf(stdout, "%d\n", data[j]);
             data2[j] = &data[j];
+            int *v = data2[j];
+            fprintf(stdout, "%d\n", *v);
           }
           fflush(stdout);
 
@@ -2632,7 +2696,8 @@ void* comm_listener_global_balance() {
           long smallest_qid = find_smallest_q();
           //lockfree_queue_insert_N_items_no_lock_by_tid((void**) &data, receive_item_count, &smallest_qid);
           lockfree_queue_insert_N_items_no_lock_by_tid(data2, receive_item_count, &smallest_qid);
-          //free(data); //free in remove
+          free(data);
+          free(data2);
         }
         printf("MASTER: Receiving work done\n");
       }
@@ -2697,14 +2762,14 @@ void* comm_listener_global_balance() {
         // Slave only receives data
         // In work_arr[0] is number of receives
         MPI_Recv(work_arr, receive_send_count, MPI_UNSIGNED_LONG, master_id, 803, MPI_COMM_WORLD, &status);
-        fprintf(stdout, "Slave[%d]: has to receive %d times\n", comm_rank, receive_send_count);
-        fflush(stdout);
         if (work_arr[0] == 0) {
           // Nothing to receive
           fprintf(stdout, "Slave[%d]: has nothing to receive\n", comm_rank);
           fflush(stdout);
         }
         else {
+          fprintf(stdout, "Slave[%d]: has to receive %d times\n", comm_rank, receive_send_count);
+          fflush(stdout);
           // Wait for data receives
           for (int i = 0; i < work_arr[0]; i++) {
             MPI_Probe(MPI_ANY_SOURCE, 804, MPI_COMM_WORLD, &status);
@@ -2721,7 +2786,7 @@ void* comm_listener_global_balance() {
             //MPI_Recv(data[i], receive_item_count, MPI_INT, src_id, 804, MPI_COMM_WORLD, &status);
             MPI_Recv(data, receive_item_count, MPI_INT, src_id, 804, MPI_COMM_WORLD, &status);
             
-            //fprintf(stdout, "Slave[%d]: received these items\n", comm_rank);
+            fprintf(stdout, "Slave[%d]: received these items\n", comm_rank);
             //fflush(stdout);
             /*for (int j = 0; j < receive_item_count; j++) {
               int v = data[i][j];
@@ -2732,16 +2797,18 @@ void* comm_listener_global_balance() {
               /*int* d = malloc(sizeof(int));
               *d = data[j];*/
               data2[j] = &data[j];
+              int *v = data2[j];
+              fprintf(stdout, "%d\n", *v);
             }
             fflush(stdout);
 
             long smallest_qid = find_smallest_q();
-            //lockfree_queue_insert_N_items_no_lock_by_tid((void**) &data[i], receive_send_count, &smallest_qid);
-            //lockfree_queue_insert_N_items_no_lock_by_tid((void**) &data, receive_send_count, &smallest_qid);
-            lockfree_queue_insert_N_items_no_lock_by_tid(data2, receive_send_count, &smallest_qid);
-            //free(data);
+            //lockfree_queue_insert_N_items_no_lock_by_tid((void**) &data[i], receive_item_count, &smallest_qid);
+            //lockfree_queue_insert_N_items_no_lock_by_tid((void**) &data, receive_item_count, &smallest_qid);
+            lockfree_queue_insert_N_items_no_lock_by_tid(data2, receive_item_count, &smallest_qid);
+            free(data);
+            free(data2);
           }
-          //free(data);
           printf("Slave[%d]: Receiving work done\n", comm_rank);
         }
       }
@@ -3010,7 +3077,11 @@ int send_data(int dst, unsigned long count) {
       //TODO test retype void* to array of pointers to int 
       fprintf(stdout, "Items to take after comp=%ld; need to get %ld more items\n", items_to_take, count_tmp);
       fflush(stdout);
-      void** values = lockfree_queue_remove_Nitems_to_arr((long) i, items_to_take);
+      void** values = malloc(items_to_take * sizeof(void*));
+      for (int j = 0; j < items_to_take; j++) {
+        values[j] = malloc(sizeof(void*));
+      }
+      lockfree_queue_remove_Nitems_no_lock_by_tid((long) i, items_to_take, values);
 
       /*printf("Removed items in send_items: \n");
       for (int j = 0; j < items_to_take; j++) {

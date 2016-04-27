@@ -189,7 +189,6 @@ void *work(void *arg_struct) {
 
     int timeout = 0;
     //unsigned long n_removed = 0;
-    int *retval;
 
     while (1) {
       unsigned long fin = atomic_load( &finished );
@@ -206,10 +205,10 @@ void *work(void *arg_struct) {
     clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
     while(1) {
-      //retval = lockfree_queue_remove_item(timeout);
-      retval = lockfree_queue_remove_item_by_tid(qid, timeout);
+      int *retval = (int*) malloc(sizeof(int));
+      ret = lockfree_queue_remove_item_by_tid(qid, timeout, retval);
 
-      if (retval == NULL) {
+      if (ret == NULL) {
         unsigned long size = lockfree_queue_size_total();
         if (size == 0) {
           /*unsigned long size2 = lockfree_queue_size_total_consistent();
@@ -240,7 +239,6 @@ void *work(void *arg_struct) {
         //n_removed++;
         n_removed_arr[*tid / 2]++;
         //atomic_fetch_add( &total_removes, 1);
-        free(retval);
       }
     }
   }
