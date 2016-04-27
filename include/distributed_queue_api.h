@@ -31,7 +31,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   double local_lb_threshold_dynamic, double global_lb_threshold_dynamic, unsigned long local_lb_threshold_static, 
   unsigned long global_lb_threshold_static, unsigned int local_lb_type, unsigned int local_balance_type_arg, 
   bool hook_arg );
-extern void lockfree_queue_insert_item(void *val);
+extern int lockfree_queue_insert_item(void *val);
 extern void lockfree_queue_insert_item_no_lock(void *val);
 extern void lockfree_queue_insert_item_by_tid (void *t, void* val);
 extern void lockfree_queue_insert_item_by_tid_no_lock(void *t, void* val);

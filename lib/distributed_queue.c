@@ -199,7 +199,8 @@ unsigned int global_size_receive_timeout = 10000; //timeout for receive
 unsigned long last_global_size;
 
 bool global_balancing_enable; //True enables global balancing, False disables global balancing
-struct timespec *last_global_rebalance_time;   //For elimination of flooding network with global rebalance requests
+struct timespec *last_global_rebalance_call_send_time;   //For elimination of flooding network with global rebalance requests
+struct timespec *last_global_rebalance_done_time;
 struct timespec *last_local_rebalance_time;
 
 unsigned long local_balance_wait_timer;
@@ -690,9 +691,11 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   /*
    * Global balance listener
    */
+  last_global_rebalance_done_time = (struct timespec*) malloc (sizeof (struct timespec));
+  clock_gettime(CLOCK_REALTIME, last_global_rebalance_done_time);
 
-  last_global_rebalance_time = (struct timespec*) malloc (sizeof (struct timespec));
-  clock_gettime(CLOCK_REALTIME, last_global_rebalance_time);
+  last_global_rebalance_call_send_time = (struct timespec*) malloc (sizeof (struct timespec));
+  clock_gettime(CLOCK_REALTIME, last_global_rebalance_call_send_time);
   last_local_rebalance_time = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, last_local_rebalance_time);
   local_balance_wait_timer = 6000; // in microseconds
@@ -1143,10 +1146,11 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
   }
 
   fprintf(stdout, "InsertNItems(%d): \n", item_count);
+  fflush(stdout);
   for (int i = 0; i < item_count; i++) {
     int *v = values[i];
-    fprintf(stdout, "%p--%d\n", v, *v);
-    fflush(stdout);
+    /*fprintf(stdout, "%p--%d\n", v, *v);
+    fflush(stdout);*/
   }
 
   long *tid = qid;
@@ -1954,7 +1958,7 @@ int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
   
   unsigned long qsize = atomic_load( &(q->a_qsize) );
   if ( qsize < N ) {
-    //printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
+    printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
     LOG_DEBUG_TD(tid, "Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
     pthread_mutex_unlock(&rm_mutexes[tid]);
     return -1;
@@ -1974,7 +1978,7 @@ int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
   }
 
   if (i != N) {
-    //printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
+    printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
     LOG_DEBUG_TD(tid, "Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
     pthread_mutex_unlock(&rm_mutexes[tid]);
     return -1;
@@ -2428,12 +2432,12 @@ int global_balance(long tid) {
   if ( pthread_rwlock_trywrlock(&load_balance_global_rwlock) == 0 ) {
     //Got lock
     //printf("Node %d: Got lock on global balance\n", comm_rank);
-    if ( time_diff_dds(last_global_rebalance_time, balance_start_time)->tv_sec > 0 ) {
+    if ( time_diff_dds(last_global_rebalance_call_send_time, balance_start_time)->tv_sec > 0 ) {
       //Last rebalance was more than one second ago, do rebalance again
       printf("Node %d: Last GB was MORE than 1sec ago\n", comm_rank);
-      clock_gettime(CLOCK_REALTIME, last_global_rebalance_time);
-      GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Starting global balance in %ld.%ld\n", last_global_rebalance_time->tv_sec, last_global_rebalance_time->tv_nsec);
-      printf("Node %d: Starting global balance in %ld.%ld\n", comm_rank, last_global_rebalance_time->tv_sec, last_global_rebalance_time->tv_nsec);
+      clock_gettime(CLOCK_REALTIME, last_global_rebalance_call_send_time);
+      GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Starting global balance in %ld.%ld\n", last_global_rebalance_call_send_time->tv_sec, last_global_rebalance_call_send_time->tv_nsec);
+      printf("Node %d: Starting global balance in %ld.%ld\n", comm_rank, last_global_rebalance_call_send_time->tv_sec, last_global_rebalance_call_send_time->tv_nsec);
       atomic_fetch_add(&load_balancer_call_count_global, 1);
 
       short buf;
@@ -2441,7 +2445,12 @@ int global_balance(long tid) {
       short code_800 = 800;
       MPI_Send(&code_800, 1, MPI_SHORT, master_id, 800, MPI_COMM_WORLD);
       MPI_Recv(&buf, 1, MPI_INT, master_id, 805, MPI_COMM_WORLD, &status); // Balancing finished
-      printf("Node %d: Balancing finished, unlock RWLock\n", comm_rank);
+      if (buf == 0) {
+        printf("Node %d: Balancing finished\n", comm_rank);
+      } 
+      if (buf == 1) {
+        printf("Node %d: Balancing has not run, because last balance was too early\n", comm_rank);
+      }
       pthread_rwlock_unlock(&load_balance_global_rwlock);
 
     }
@@ -2491,6 +2500,7 @@ void* comm_listener_global_balance() {
 
   if ( comm_rank == master_id ) {
     //MASTER
+    struct timespec *current_time = (struct timespec*) malloc (sizeof (struct timespec));
     printf("Master listening on comm_rank %d\n", comm_rank);
     while(1) {
       
@@ -2519,9 +2529,17 @@ void* comm_listener_global_balance() {
         }
       }
       
-      MPI_Request *requests_801 = (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));;
-      MPI_Status *statuses_801 = (MPI_Status*) malloc( (comm_size - 1) * sizeof(MPI_Status));;
       int source_node = status.MPI_SOURCE;
+
+      clock_gettime(CLOCK_REALTIME, current_time);
+      if ( time_diff_dds(last_global_rebalance_done_time, current_time)->tv_sec < 1 ) {
+        int code_805 = 1; //1 is that global balance was not done because timeout was not reached
+        MPI_Send(&code_805, 1, MPI_INT, source_node, 805, MPI_COMM_WORLD); //rebalance finished
+        continue;
+      }
+
+      MPI_Request *requests_801 = (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));
+      MPI_Status *statuses_801 = (MPI_Status*) malloc( (comm_size - 1) * sizeof(MPI_Status));
       printf("MASTER GB: Got GB request from N[%d]\n", source_node);
       short msg = 0;
       int cnt = 0;
@@ -2538,6 +2556,7 @@ void* comm_listener_global_balance() {
       MPI_Request *requests =  (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));
       MPI_Status *statuses = (MPI_Status*) malloc( (comm_size - 1) * sizeof(MPI_Status));
       unsigned long *node_sizes = (unsigned long*) malloc(comm_size * sizeof(unsigned long));
+      //unsigned long *node_sizes_tmp = (unsigned long*) malloc(comm_size * sizeof(unsigned long));
       cnt = 0;
 
       LOCK_LOAD_BALANCER();
@@ -2569,6 +2588,9 @@ void* comm_listener_global_balance() {
         printf("MASTER GB: Node[%d] size is %ld\n", i, node_sizes[i]);
       }
 
+      /*copy node_sizes to node_size_tmp
+      memcpy(node_size_tmp, node_sizes, sizeof(unsigned long) * comm_rank);*/
+
       for (int i = 0 ; i < comm_size - 1; i++) {
         LOAD_BALANCE_LOG_DEBUG_TD("Global Load balance round %d\n", i);
         
@@ -2579,9 +2601,14 @@ void* comm_listener_global_balance() {
         else
            items_to_send = node_sizes[indexes[0]] - estimated_size;
 
-        printf("Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
-        LOAD_BALANCE_LOG_DEBUG_TD("Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
+        printf("Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], 
+          node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
+        LOAD_BALANCE_LOG_DEBUG_TD("Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], 
+          node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
         
+        node_sizes[indexes[0]] -= items_to_send;
+        node_sizes[indexes[1]] += items_to_send;
+
         if (indexes[0] == indexes[1]) {
           continue;
         }
@@ -2672,7 +2699,7 @@ void* comm_listener_global_balance() {
           void **data2 = malloc (receive_item_count * sizeof(void*));
           int src_id = status.MPI_SOURCE;
           
-          fprintf(stdout, "MASTER: receive_item_count to receive=%d\n", receive_item_count);
+          fprintf(stdout, "MASTER: receive_item_count to receive=%d from node %d\n", receive_item_count, src_id);
           fflush(stdout);
 
           //void* data = (void*) malloc();
@@ -2680,17 +2707,16 @@ void* comm_listener_global_balance() {
           //MPI_Recv(data[i], receive_item_count, MPI_INT, src_id, 804, MPI_COMM_WORLD, &status);
           MPI_Recv(data, receive_item_count, MPI_INT, src_id, 804, MPI_COMM_WORLD, &status);
           
-          fprintf(stdout, "MASTER: received these items\n");
-          fflush(stdout);
+          //fprintf(stdout, "MASTER: received these items\n");
           for (int j = 0; j < receive_item_count; j++) {
             //int v = data[i][j];
             //fprintf(stdout, "%d\n", v);
             //fprintf(stdout, "%d\n", data[j]);
             data2[j] = &data[j];
             int *v = data2[j];
-            fprintf(stdout, "%d\n", *v);
+            //fprintf(stdout, "%d\n", *v);
           }
-          fflush(stdout);
+          //fflush(stdout);
 
           //lockfree_queue_insert_N_items((void**) &data[i], receive_send_count);
           long smallest_qid = find_smallest_q();
@@ -2710,10 +2736,11 @@ void* comm_listener_global_balance() {
       }
 
       printf("MASTER GB: GB done!\n");
-      int code_805 = 0;
+      int code_805 = 0; //0 is that Global balance was finished successfuly
       MPI_Send(&code_805, 1, MPI_INT, source_node, 805, MPI_COMM_WORLD); //rebalance finished
       UNLOCK_LOAD_BALANCER();
       UNLOCK_LOCAL_QUEUES();
+      clock_gettime(CLOCK_REALTIME, last_global_rebalance_done_time);
 
     }
   }
@@ -2778,7 +2805,7 @@ void* comm_listener_global_balance() {
             int *data = malloc (receive_item_count * sizeof(int));
             void **data2 = malloc (receive_item_count * sizeof(void*));
             
-            fprintf(stdout, "Slave%d: receive_item_count to receive=%d\n", comm_rank, receive_item_count);
+            fprintf(stdout, "Slave%d: receive_item_count to receive=%d from source %d\n", comm_rank, receive_item_count, src_id);
             fflush(stdout);
 
             //void* data = (void*) malloc();
@@ -2798,9 +2825,9 @@ void* comm_listener_global_balance() {
               *d = data[j];*/
               data2[j] = &data[j];
               int *v = data2[j];
-              fprintf(stdout, "%d\n", *v);
+              //fprintf(stdout, "%d\n", *v);
             }
-            fflush(stdout);
+            //fflush(stdout);
 
             long smallest_qid = find_smallest_q();
             //lockfree_queue_insert_N_items_no_lock_by_tid((void**) &data[i], receive_item_count, &smallest_qid);
@@ -2817,6 +2844,7 @@ void* comm_listener_global_balance() {
         MPI_Recv(work_arr, receive_send_count, MPI_UNSIGNED_LONG, master_id, 803, MPI_COMM_WORLD, &status);
 
         for (int i = 0; i < receive_send_count / 2; i++) {
+          fprintf(stdout, "Slave%d: Processing message %d\n", comm_rank, i);
           unsigned long dst_node_id = work_arr[i * 2];
           unsigned long send_item_count = work_arr[(i * 2) + 1];
           fprintf(stdout, "Slave%d: has to send %lu items to node %lu\n", comm_rank, send_item_count, dst_node_id);
@@ -3243,7 +3271,6 @@ void* per_time_statistics_reseter(void *arg) {
     atomic_store(&rm_count_last, atomic_load(&rm_count));
     atomic_store(&ins_count_last, atomic_load(&ins_count));
 
-    //TODO remove prints after debugging
     LOG_INFO_TD("Per seconds statistics time=%d\n", (int) time(NULL));
     for (long i = 0; i < queue_count; i++) {
       LOG_INFO_TD("\tQueue[%ld] size is %ld\n", i, lockfree_queue_size_by_tid(&i));
@@ -3273,7 +3300,6 @@ void* local_struct_cleanup() {
       struct lockfree_queue_item *tmp;
       pthread_mutex_lock(&add_mutexes[i]);
     
-      //cleanup
       while ( q->head != q->divider ) {
         tmp = q->head;
         q->head = q->head->next;
@@ -3283,7 +3309,7 @@ void* local_struct_cleanup() {
       }
       pthread_mutex_unlock(&add_mutexes[i]);
     }
-    //printf("cleaned %ld items\n", items_cleaned);
+    LOG_DEBUG_TD((long) 0, "cleaned %ld items\n", items_cleaned);
 
   }
 

@@ -16,6 +16,13 @@ mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --l
 bin/queue_tester_rand_computation -d 5 -q 1 -p 1 -c 1 -l false --local-balance-type=pair
 
 
-cat *rm* > x_rm; sort x_rm > x_rm_s
-cat *ins* > x_ins; sort x_ins > x_ins_s
+cat *rm*28594 > x_rm; sort x_rm > x_rm_s1
+cat *rm*28595 > x_rm; sort x_rm > x_rm_s2
+cat *rm*28596 > x_rm; sort x_rm > x_rm_s3
+cat *rm*28597 > x_rm; sort x_rm > x_rm_s4
+cat *ins*28594 > x_ins; sort x_ins > x_ins_s1
+cat *ins*28595 > x_ins; sort x_ins > x_ins_s2
+cat *ins*28596 > x_ins; sort x_ins > x_ins_s3
+cat *ins*28597 > x_ins; sort x_ins > x_ins_s4
 diff x_rm_s x_ins_s
+

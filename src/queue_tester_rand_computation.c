@@ -151,13 +151,9 @@ void *work(void *arg_struct) {
   struct timespec *tp_rt_start_insert = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end_insert = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_proc_start = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_proc_end = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_thr = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
-  clock_gettime(CLOCK_PROCESS_CPUTIME_ID, tp_proc_start);
-  LOG_DEBUG_TD(*tid, "START PROGRAM: \n\tRealtime - %lu.%lu seconds\n\tProcess Time - %lu.%lu seconds\n",
-    tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_proc_start->tv_sec, tp_proc_start->tv_nsec);
+  LOG_DEBUG_TD(*tid, "START PROGRAM: \n\tRealtime - %lu.%lu seconds\n", tp_rt_start->tv_sec, tp_rt_start->tv_nsec);
   LOG_DEBUG_TD(*tid, "\tThread %ld has ID %lu, insertion ratio %d and remove ratio %d\n", 
     *tid, pthread_self(), q_ins_ratios[*tid / 2], q_rm_ratios[*tid / 2] );
 
@@ -275,8 +271,7 @@ void *work(void *arg_struct) {
     int ret;
     //int n = 5;
     while(1) {
-      //int *retval = (int*) malloc(sizeof(int));
-      int *retval;
+      int *retval = (int*) malloc(sizeof(int));
       ret = lockfree_queue_remove_item_by_tid(qid, retval);
       /*void **retvals = malloc(sizeof(void*));
       ret = lockfree_queue_remove_Nitems_no_lock_by_tid(*qid, n, retvals);*/
@@ -284,7 +279,7 @@ void *work(void *arg_struct) {
       if (ret == -1) {
         unsigned long size = lockfree_queue_size_total();
         if (size == 0) {
-          unsigned long global_size_val = global_size(true);
+          unsigned long global_size_val = global_size(false);
           if ( global_size_val == 0 ) {
             unsigned long fin = atomic_load( &finished );
             if ( fin != queue_count_arg ) {
@@ -713,10 +708,6 @@ int main(int argc, char** argv) {
   argp_parse(&argp, argc, argv, 0, 0, &arg_lb_count);
 
   atomic_init(&finished, 0);
-  atomic_init(&total_inserts, 0);
-  atomic_init(&total_removes, 0);
-  //atomic_init(&total_sum_rm, 0);
-  //atomic_init(&total_sum_ins, 0);
   atomic_init(&np, 0);
   atomic_init(&nc, 0);
 
