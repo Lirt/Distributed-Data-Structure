@@ -24,22 +24,6 @@
    #include <stdlib.h>
 #endif
 
-struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
-
-  struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));;
-  if ( ( end->tv_nsec - start->tv_nsec ) < 0 ) {
-    result->tv_sec = end->tv_sec - start->tv_sec - 1;
-    result->tv_nsec = 1000000000 + end->tv_nsec - start->tv_nsec;
-  } 
-  else {
-    result->tv_sec = end->tv_sec - start->tv_sec;
-    result->tv_nsec = end->tv_nsec - start->tv_nsec;
-  }
-  return result;
-  
-}
-
-
 /*
  * Lock-Free Queue(http://www.drdobbs.com/parallel/writing-lock-free-code-a-corrected-queue/210604448?pgno=2)
  */
@@ -54,6 +38,7 @@ struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
 /*
  * QUEUE ITEM
  */
+
 #ifndef LOCKFREE_QUEUE_ITEM
   #define LOCKFREE_QUEUE_ITEM
 	struct lockfree_queue_item {
@@ -65,21 +50,21 @@ struct timespec *time_diff_dds(struct timespec *start, struct timespec *end) {
 /*
  * Lock-Free Queue struct
  */
+
 #ifndef DS_LOCKFREE_QUEUE
   #define DS_LOCKFREE_QUEUE
 	struct ds_lockfree_queue {
-      //const int max;
     size_t item_size;
     atomic_ulong a_qsize;
+    unsigned long max_size;
     struct lockfree_queue_item *head;
     struct lockfree_queue_item *tail;
     struct lockfree_queue_item *divider;
 	};
 #endif 
 
-//typedef struct ds_queue_local queue;
 extern struct ds_lockfree_queue **queues;
-extern int queue_count; //number of created queues
+extern int queue_count;
 
 extern pthread_mutex_t local_queue_struct_mutex;
 extern pthread_mutex_t *add_mutexes;
@@ -127,12 +112,25 @@ extern long **tids;
 
 #define UNLOCK_LOAD_BALANCER() \
   pthread_mutex_unlock(&load_balance_mutex);
-   
-//pthread_mutex_lock(&qsize_watcher_mutex);
+
 
 /***********
  * FUNCTIONS
  */
+
+struct timespec time_diff_dds(struct timespec *start, struct timespec *end) {
+  struct timespec result; 
+  if ( ( end->tv_nsec - start->tv_nsec ) < 0 ) {
+    result.tv_sec = end->tv_sec - start->tv_sec - 1;
+    result.tv_nsec = 1000000000 + end->tv_nsec - start->tv_nsec;
+  } 
+  else {
+    result.tv_sec = end->tv_sec - start->tv_sec;
+    result.tv_nsec = end->tv_nsec - start->tv_nsec;
+  }
+
+  return result;
+}
 
 struct load_balancer_struct {
   unsigned long *qsize_history;
@@ -149,7 +147,6 @@ extern void* qsize_watcher_min_max_strategy();
 extern void* qsize_watcher_local_threshold_strategy();
 extern qsize_watcher_strategy qw_strategy;
 
-
 typedef struct qsize_struct_sorted {
   unsigned long size;
   long index;
@@ -161,51 +158,46 @@ typedef struct work_to_send_struct {
   unsigned long *item_counts;  //amount of items to send to node i
 } work_to_send;
 
-//extern void lockfree_queue_destroy(void);
 extern void lockfree_queue_free(void *tid);
-//extern unsigned long global_size();
+
 extern bool lockfree_queue_is_empty_local (void *tid);
 extern bool lockfree_queue_is_empty_all_local (void);
 extern bool lockfree_queue_is_empty_all_consistent_local(void);
-//extern void lockfree_queue_init_callback(void *(*callback)(void *args), void *arguments, int queue_count, int thread_count);
-/*void lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, 
-  unsigned int queue_count_arg, unsigned int thread_count_arg, 
-  bool qw_thread_enable_arg, double local_lb_threshold_dynamic, double global_lb_threshold_dynamic, 
-  unsigned long local_lb_threshold_static, unsigned long global_lb_threshold_static, local_lb_type );*/
-//extern void lockfree_queue_insert_item(void *val);
+
 extern void lockfree_queue_insert_item_by_tid(void *tid, void *val);
 extern void lockfree_queue_insert_item_by_tid_no_lock(void *tid, void *val);
-extern int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** buffer);
-//extern void lockfree_queue_insert_N_items(void** values, int item_count);
 extern void lockfree_queue_insert_N_items_no_lock_by_tid(void** values, int item_count, void* qid);
-//extern void* load_balancer_all_balance();
-extern void lockfree_queue_move_items(int q_id_from, int q_id_to, unsigned long count);
+
 extern unsigned long lockfree_queue_size_by_tid(void *tid);
 extern unsigned long lockfree_queue_size_total(void);
 extern unsigned long* lockfree_queue_size_total_consistent_allarr(void);
+extern qsizes* lockfree_queue_size_total_allarr_sorted();
+
 extern void* lockfree_queue_qsize_watcher();
-//extern void lockfree_queue_stop_watcher(void);
-//extern void* lockfree_queue_remove_item(int timeout);
+extern void lockfree_queue_move_items(int q_id_from, int q_id_to, unsigned long count);
+
 extern int lockfree_queue_remove_item_by_tid(void *tid, void* buffer);
 extern int lockfree_queue_remove_item_by_tid_no_lock(void *tid, void* buffer);
+extern int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** buffer);
+
 extern int global_balance(long tid);
 extern void* comm_listener_global_balance();
 extern void* comm_listener_global_size();
+extern int send_data(int dst, unsigned long count);
 
-extern double sum_time(time_t sec, long nsec);
-extern struct timespec *time_diff(struct timespec *start, struct timespec *end);
-extern void* per_time_statistics_reseter(void *arg);
-extern void* local_struct_cleanup();
 extern int  getInsertionTid();
 extern int  getRemovalTid();
 
-extern int send_data(int dst, unsigned long count);
-extern int node_receive_count(int node_id, work_to_send *wts);
+extern double sum_time(time_t sec, long nsec);
+extern struct timespec time_diff(struct timespec *start, struct timespec *end);
+extern void* per_time_statistics_reseter(void *arg);
+extern void* local_struct_cleanup();
+
 extern unsigned long sum_arr(unsigned long *arr, unsigned long len);
+extern int node_receive_count(int node_id, work_to_send *wts);
 extern long maxdiff_q(void* qid);
 extern long find_largest_q();
 extern long find_smallest_q();
 extern long find_max_element_index(unsigned long *array, unsigned long len);
-extern int* find_max_min_element_index(unsigned long *array, unsigned long len);
-extern qsizes* lockfree_queue_size_total_allarr_sorted();
+extern int find_max_min_element_index(unsigned long *array, unsigned long len, int* index_max_min);
 extern int qsize_comparator(const void *a, const void *b);

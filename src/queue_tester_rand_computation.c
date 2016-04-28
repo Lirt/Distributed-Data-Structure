@@ -74,6 +74,7 @@ atomic_int nc;
 
 unsigned int program_duration = 10;
 unsigned int queue_count_arg = 0;
+unsigned long max_qsize = 0;
 bool load_balance_thread_arg = false;
 unsigned int threshold_type_arg = 0;
 unsigned int local_balance_type_arg = 0;
@@ -109,9 +110,8 @@ unsigned long sum_array(unsigned long* arr) {
 
 }
 
-struct timespec *time_diff(struct timespec *start, struct timespec *end) {
+int time_diff(struct timespec *start, struct timespec *end, struct timespec *result) {
 
-  struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));;
   if ( ( end->tv_nsec - start->tv_nsec ) < 0 ) {
     result->tv_sec = end->tv_sec - start->tv_sec - 1;
     result->tv_nsec = 1000000000 + end->tv_nsec - start->tv_nsec;
@@ -120,7 +120,8 @@ struct timespec *time_diff(struct timespec *start, struct timespec *end) {
     result->tv_sec = end->tv_sec - start->tv_sec;
     result->tv_nsec = end->tv_nsec - start->tv_nsec;
   }
-  return result;
+
+  return 0;
 
 }
 
@@ -236,18 +237,23 @@ void *work(void *arg_struct) {
       if (x == 5000) {
         x = 0;
         clock_gettime(CLOCK_REALTIME, tp_rt_end_insert);
-        if ( time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_sec >= program_duration ) {
+        struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
+        time_diff(tp_rt_start_insert, tp_rt_end_insert, result);
+        if ( result->tv_sec >= program_duration ) {
           pthread_barrier_wait(&barrier);
-          LOG_INFO_TD("Time is up, endTime = %ld sec and %ld nsec\n", 
-            time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_sec, time_diff(tp_rt_start_insert, tp_rt_end_insert)->tv_nsec);
+          LOG_INFO_TD("Time is up, endTime = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
           LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid/2]);
           LOG_INFO_TD("\tTotal Inserted %lu items\n", sum_array(n_inserted_arr));
 
           atomic_fetch_add( &finished, 1);
+          free(result);
+          free(qid);
+          free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
           fclose(work_file_ins);
           fclose(work_file_rm);
           return NULL;
         }
+        free(result);
       }
     }
   }
@@ -277,6 +283,7 @@ void *work(void *arg_struct) {
       ret = lockfree_queue_remove_Nitems_no_lock_by_tid(*qid, n, retvals);*/
 
       if (ret == -1) {
+        free(retval);
         unsigned long size = lockfree_queue_size_total();
         if (size == 0) {
           unsigned long global_size_val = global_size(false);
@@ -289,17 +296,23 @@ void *work(void *arg_struct) {
               clock_gettime(CLOCK_REALTIME, tp_rt_end);
               clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
 
+              struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
+              time_diff(tp_rt_start, tp_rt_end, result);
               LOG_DEBUG_TD(*tid, "Total sum of removed items for T[%ld] is %lu\n", *tid, sum_array(sums));
               LOG_DEBUG_TD(*tid, "Total removed items %lu\n", sum_array(n_removed_arr));
               LOG_DEBUG_TD(*tid, "Final realtime program time = %lu.%lu\n", 
-                time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
+                result->tv_sec, result->tv_nsec );
 
               LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid/2]);
               LOG_INFO_TD("\tT[%ld]: Sum of items %lu\n", *tid, sums[*tid/2]);
               LOG_INFO_TD("Total sum of removed items is %lu\n", sum_array(sums));
               LOG_INFO_TD("Total removed items %lu\n", sum_array(n_removed_arr));
               LOG_INFO_TD("Final realtime program time = %lu.%lu\n", 
-                time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
+                result->tv_sec, result->tv_nsec );
+
+              free(result);
+              free(qid);
+              free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
 
               fclose(work_file_ins);
               fclose(work_file_rm);
@@ -313,7 +326,7 @@ void *work(void *arg_struct) {
         NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
         n_removed_arr[*tid/2]++;
         sums[*tid/2] += *retval;
-        //free(retval);
+        free(retval);
         /*for (int k = 0; k < n; k++) {
           int *val = retvals[k];
           NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *val);
@@ -367,8 +380,9 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
 
       n_inserted_arr = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
       n_removed_arr = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
+      free(sums);
       sums = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
-      for (int i =0; i < queue_count_arg; i++) {
+      for (int i = 0; i < queue_count_arg; i++) {
         n_inserted_arr[i] = 0;
         n_removed_arr[i] = 0;
         sums[i] = 0;
@@ -419,12 +433,25 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       consumers = strtoul(arg, &endptr, 10);
       if ( endptr == arg ) {
         //LOG_ERR_T( (long) -1, "Cannot parse number\n");
-        fprintf(stderr, "OPT[ERROR]: \n");
+        fprintf(stderr, "OPT[ERROR]: Number of consumer threads must be number\n");
         exit(-1);
       }
       printf("OPT: Number of consumer threads set to %d.\n", consumers);
       break;
     }
+
+    case 's': {
+      char *endptr;
+      max_qsize = strtoul(arg, &endptr, 10);
+      if ( endptr == arg ) {
+        //LOG_ERR_T( (long) -1, "Cannot parse number\n");
+        fprintf(stderr, "OPT[ERROR]: Maximum qsize must be number\n");
+        exit(-1);
+      }
+      printf("OPT: Maximum queue size was set to %lu.\n", max_qsize);
+      break;
+    }
+
 
     case 150: {
       local_lb_threshold_percent = atof(arg);
@@ -673,6 +700,11 @@ int main(int argc, char** argv) {
     q_rm_ratios[i] = 1;
   }
 
+  sums = (unsigned long*) malloc(8 * sizeof(unsigned long));
+  for (int i = 0; i < queue_count_arg; i++) {
+    sums[i] = 0;
+  }
+
   //TODO add len_s parameter for dynamic threshold
 
   struct argp_option options[] = { 
@@ -683,6 +715,7 @@ int main(int argc, char** argv) {
                                                         and after that 'continue' to start program.", 2},
     { "producers",                'p', "<NUM>",           0, "Amount of producer threads", 4},
     { "consumers",                'c', "<NUM>",           0, "Amount of consumer threads", 4},
+    { "max_qsize",                's', "<NUM>",           0, "Maximum size of queue", 4},
     { "local-threshold-percent",  150, "<DECIMAL>",       0, "Sets threshold for local load balancing thread in percentage", 2},
     { "global-threshold-percent", 151, "<DECIMAL>",       0, "Sets threshold for global load balancing thread in percentage", 2},
     { "local-threshold-static",   152, "<NUM>",           0, "Sets static threshold for local load balancing thread in number of items", 2},
@@ -713,17 +746,20 @@ int main(int argc, char** argv) {
 
   pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
-    global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook);
+    global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook, max_qsize);
 
   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
     pthread_join(cb_threads[i], NULL);
   }
-  lockfree_queue_stop_watcher();
+  lockfree_queue_destroy();
   pthread_barrier_destroy(&barrier);
-  //TODO Cleanup
+
+
+  free(q_ins_ratios); free(q_rm_ratios);
+  free(n_inserted_arr); free(n_removed_arr); free(sums);
+
 
   printf("Main finished\n");
-  MPI_Finalize();
   return 0;
 
 }

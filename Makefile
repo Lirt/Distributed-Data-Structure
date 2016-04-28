@@ -6,8 +6,8 @@ GCC=/usr/local/bin/gcc
 CC=$(MPICC)
 HASHDIR=../uthash/src
 
-DEB=-DDEBUG -DCOUNTERS
-#DEB=-DCOUNTERS
+#DEB=-DDEBUG -DCOUNTERS
+DEB=-DCOUNTERS
 DEBUG=-g
 WARN=-Wall
 #STD=-std=c11
