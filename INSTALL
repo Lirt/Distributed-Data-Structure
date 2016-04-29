@@ -39,20 +39,5 @@ diff x_rm_s x_ins_s
 set var debug_wait=1
 cont
 
-
-_int_malloc
-malloc_consolidate
-
-
-==18115== Invalid free() / delete / delete[] / realloc()
-==18115==    at 0x4C2AD17: free (in /usr/lib64/valgrind/vgpreload_memcheck-amd64-linux.so)
-==18115==    by 0x4089EC: send_data (distributed_queue.c:3048)
-==18115==    by 0x40A4F2: comm_listener_global_balance (distributed_queue.c:2838)
-==18115==    by 0x5BB9DC4: start_thread (in /usr/lib64/libpthread-2.17.so)
-==18115==    by 0x5EC428C: clone (in /usr/lib64/libc-2.17.so)
-==18115==  Address 0x17b6f900 is 0 bytes inside a block of size 8 free'd
-==18115==    at 0x4C2AD17: free (in /usr/lib64/valgrind/vgpreload_memcheck-amd64-linux.so)
-==18115==    by 0x40891C: send_data (distributed_queue.c:3027)
-==18115==    by 0x40A4F2: comm_listener_global_balance (distributed_queue.c:2838)
-==18115==    by 0x5BB9DC4: start_thread (in /usr/lib64/libpthread-2.17.so)
-==18115==    by 0x5EC428C: clone (in /usr/lib64/libc-2.17.so)
+#LATEX SYNTAX
+vi /usr/lib/python2.7/site-packages/pygments/lexers/shell.py

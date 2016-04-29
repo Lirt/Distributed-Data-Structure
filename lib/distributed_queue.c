@@ -535,7 +535,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
     mkdir("/tmp/distributed_queue", 0777);
   }
 
-  char filename_log_debug[50] = "/tmp/distributed_queue/log_debug";
+  char filename_log_debug[50] = "/tmp/distributed_queue/log_debug_";
   strcat(filename_log_debug, pid_str);
   log_file_debug = fopen(filename_log_debug, "wb");
   if (log_file_debug == NULL) {
@@ -543,7 +543,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   }
   LOG_DEBUG_TD( (long) -1, "Debug log file opened\n");
 
-  char filename_log_lb[50] = "/tmp/distributed_queue/log_debug_lb";
+  char filename_log_lb[50] = "/tmp/distributed_queue/log_debug_lb_";
   strcat(filename_log_lb, pid_str);
   log_file_lb = fopen(filename_log_lb, "wb");
   if (log_file_lb == NULL) {
@@ -551,7 +551,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   }
   LOAD_BALANCE_LOG_DEBUG_TD("Load balancer log file opened\n");
 
-  char filename_log_qw[50] = "/tmp/distributed_queue/log_debug_qw";
+  char filename_log_qw[50] = "/tmp/distributed_queue/log_debug_qw_";
   strcat(filename_log_qw, pid_str);
   log_file_qw = fopen(filename_log_qw, "wb");
   if (log_file_qw == NULL) {
@@ -567,7 +567,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   fprintf(file_pid, "%d", pid_int);
   fclose(file_pid);
 
-  char filename_log_global_comm[60] = "/tmp/distributed_queue/log_debug_global_comm";
+  char filename_log_global_comm[60] = "/tmp/distributed_queue/log_debug_global_siz_er";
   strcat(filename_log_global_comm, pid_str);
   log_file_global_comm = fopen(filename_log_global_comm, "wb");
   if (log_file_global_comm == NULL) {
@@ -575,7 +575,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   }
   GLOBAL_COMM_LOG_DEBUG_TD( -1, "Global communication log file opened\n");
 
-  char filename_log_global_bal[60] = "/tmp/distributed_queue/log_debug_global_bal";
+  char filename_log_global_bal[60] = "/tmp/distributed_queue/log_debug_global_bal_";
   strcat(filename_log_global_bal, pid_str);
   log_file_global_bal = fopen(filename_log_global_bal, "wb");
   if (log_file_global_bal == NULL) {
@@ -1856,10 +1856,6 @@ int lockfree_queue_remove_item (void* buffer) {
    
   pthread_mutex_lock(&rm_mutexes[tid]);
    
-  //TODO timeout spin will try if q->divider is != q-> tail in while, but needs to be timed to nano or microseconds
-  //if (timeout > 0)
-  //   usleep(timeout);
-
   if ( q->divider != q->tail ) {
     val = q->divider->next->val;
     q->divider = q->divider->next;
@@ -1869,7 +1865,7 @@ int lockfree_queue_remove_item (void* buffer) {
     pthread_mutex_unlock(&rm_mutexes[tid]);
     while(1) {
       pthread_mutex_lock(&rm_mutexes[tid]);
-      if ( q->divider != q->tail ) {   //atomic reads?
+      if ( q->divider != q->tail ) {
         val = q->divider->next->val;
         q->divider = q->divider->next;
         atomic_fetch_sub( &(q->a_qsize), 1);
@@ -1877,19 +1873,14 @@ int lockfree_queue_remove_item (void* buffer) {
       }
 
       if ( lockfree_queue_size_total() == 0 ) {
-        if ( global_balancing_enable == false ) {
-          break;
+        pthread_mutex_unlock(&rm_mutexes[tid]);
+        if ( global_size(false) != 0 ) {
+          global_balance(tid);
+          continue;
         }
         else {
-          pthread_mutex_unlock(&rm_mutexes[tid]);
-          if ( global_size(false) != 0 ) {
-            global_balance(tid);
-            continue;
-          }
-          else {
-            pthread_mutex_lock(&rm_mutexes[tid]);
-            break;
-          }
+          pthread_mutex_lock(&rm_mutexes[tid]);
+          break;
         }
       }
       else {
@@ -1935,10 +1926,6 @@ int lockfree_queue_remove_item_by_tid (void* t, void* buffer) {
 
   pthread_mutex_lock(&rm_mutexes[*tid]);
 
-  //TODO timeout spin
-  //if (timeout > 0)
-  //   usleep(timeout);
-
   if ( q->divider != q->tail ) {
     val = q->divider->next->val;
     q->divider = q->divider->next;
@@ -1948,7 +1935,7 @@ int lockfree_queue_remove_item_by_tid (void* t, void* buffer) {
     pthread_mutex_unlock(&rm_mutexes[*tid]);
     while(1) {
       pthread_mutex_lock(&rm_mutexes[*tid]);
-      if ( q->divider != q->tail ) {   //atomic reads?
+      if ( q->divider != q->tail ) {
         val = q->divider->next->val;
         q->divider = q->divider->next;
         atomic_fetch_sub( &(q->a_qsize), 1);
@@ -1956,19 +1943,14 @@ int lockfree_queue_remove_item_by_tid (void* t, void* buffer) {
       }
 
       if ( lockfree_queue_size_total() == 0 ) {
-        if ( global_balancing_enable == false ) {
-          break;
+        pthread_mutex_unlock(&rm_mutexes[*tid]);
+        if ( global_size(false) != 0 ) {
+          global_balance(*tid);
+          continue;
         }
         else {
-          pthread_mutex_unlock(&rm_mutexes[*tid]);
-          if ( global_size(false) != 0 ) {
-            global_balance(*tid);
-            continue;
-          }
-          else {
-            pthread_mutex_lock(&rm_mutexes[*tid]);
-            break;
-          }
+          pthread_mutex_lock(&rm_mutexes[*tid]);
+          break;
         }
       }
       else {
@@ -2010,8 +1992,7 @@ int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
  /*
   * N is amount of items to be taken from Q
   */
-  //TODO TEST
-   
+
   long tid = getRemovalTid();
    
   struct ds_lockfree_queue *q = queues[ tid ];
@@ -2020,7 +2001,7 @@ int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
   
   unsigned long qsize = atomic_load( &(q->a_qsize) );
   if ( qsize < N ) {
-    printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
+    //printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
     LOG_DEBUG_TD(tid, "Not enough items in queue %ld. There are %ld but was requested %ld.\n", tid, qsize, N);
     pthread_mutex_unlock(&rm_mutexes[tid]);
     return -1;
@@ -2038,7 +2019,7 @@ int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
   }
 
   if (i != N) {
-    printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
+    //printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
     LOG_DEBUG_TD(tid, "Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", tid, i);
     pthread_mutex_unlock(&rm_mutexes[tid]);
     return -1;
@@ -2057,7 +2038,7 @@ int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** 
 
   unsigned long qsize = atomic_load( &(q->a_qsize) );
   if ( qsize < item_cnt ) {
-    printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", qid, qsize, item_cnt);
+    //printf("Not enough items in queue %ld. There are %ld but was requested %ld.\n", qid, qsize, item_cnt);
     LOG_DEBUG_TD(qid, "Not enough items in queue %ld. There are %ld but was requested %ld.\n", qid, qsize, item_cnt);
     return -1;
   }
@@ -2074,7 +2055,7 @@ int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** 
   }
 
   if ( i != item_cnt ) {
-    printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", qid, i);
+    //printf("Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", qid, i);
     LOG_DEBUG_TD(qid, "Function did not return requested numbers from queue %ld. number of returned values is %ld.\n", qid, i);
     return -1;
   }
@@ -2097,11 +2078,6 @@ unsigned long global_size(bool consistency) {
   * master counts the sum and returns it to user(903)
   * master goes to barrier and unlock all nodes
   */
-
-  //TODO co ak viac nodov posle ziadost o global size. pri architekture s mastrom/P2P
-  //last_global_size_time
-  //alebo global_size_not_consistent
-  //TODO Test viac nodov
 
   if (comm_size <= 1) {
     return lockfree_queue_size_total();
@@ -2131,8 +2107,6 @@ unsigned long global_size(bool consistency) {
   struct timespec *tp_thr_end = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_start);
-  /*GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "GET GLOBAL SIZE START: \n\tRealtime- %lu.%lu seconds\n\tThread Time- %lu.%lu seconds\n", 
-    tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_thr_start->tv_sec, tp_thr_start->tv_nsec);*/
 
   MPI_Status status;
   short consistency_type;
@@ -2146,35 +2120,19 @@ unsigned long global_size(bool consistency) {
   }
   
   MPI_Send(&consistency_type, 1, MPI_SHORT, master_id, 900, MPI_COMM_WORLD);
-  //printf("900 send from %d\n", comm_rank);
 
   unsigned long global_size_val = 0;
 
   MPI_Recv(&buf, 1, MPI_SHORT, master_id, 905, MPI_COMM_WORLD, &status);
-  /*if ( pthread_rwlock_trywrlock(&global_size_executing_rwlock) != 0 ) {
-    //lock in listener
-    MPI_Recv(&global_size_val, 1, MPI_UNSIGNED_LONG, master_id, 903, MPI_COMM_WORLD, &status);
-    last_global_size = global_size_val;
-    printf("Rank %d called for GB and received 903\n", comm_rank);
 
-    pthread_rwlock_unlock(&global_size_rwlock);
-  }*/
-  //else {
-    //lock here
-    MPI_Recv(&global_size_val, 1, MPI_UNSIGNED_LONG, master_id, 903, MPI_COMM_WORLD, &status);
-    last_global_size = global_size_val;
-    //printf("Rank %d called for GB and received 903\n", comm_rank);
+  MPI_Recv(&global_size_val, 1, MPI_UNSIGNED_LONG, master_id, 903, MPI_COMM_WORLD, &status);
+  last_global_size = global_size_val;
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    pthread_rwlock_unlock(&global_size_executing_rwlock);
-    pthread_rwlock_unlock(&global_size_rwlock);
-  //}
-
-
+  MPI_Barrier(MPI_COMM_WORLD);
+  pthread_rwlock_unlock(&global_size_executing_rwlock);
+  pthread_rwlock_unlock(&global_size_rwlock);
   
-  //printf("Rank %d called for GB and is beyond barrier\n", comm_rank);
   GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "NODE %d: Global structure size is %ld\n", comm_rank, global_size_val);
-  //printf("NODE %d: Global structure size is %ld\n", comm_rank, global_size_val);
   
   clock_gettime(CLOCK_REALTIME, tp_rt_end);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr_end);
@@ -2187,9 +2145,6 @@ unsigned long global_size(bool consistency) {
   total_rt_global_size_time_nsec += time_diff_dds(tp_rt_start, tp_rt_end).tv_nsec;
   total_thr_global_size_time_sec += time_diff_dds(tp_thr_start, tp_thr_end).tv_sec;
   total_thr_global_size_time_nsec += time_diff_dds(tp_thr_start, tp_thr_end).tv_nsec;
-  /*printf("NODE %d: Global size: \n\trt_start=%ld.%ld --- \n\trt_end=%ld.%ld --- \n\ttime_diff=%ld.%ld ---\n", comm_rank,
-      tp_rt_start->tv_sec, tp_rt_start->tv_nsec, tp_rt_end->tv_sec, tp_rt_end->tv_nsec, 
-      time_diff_dds(tp_rt_start, tp_rt_end).tv_sec, time_diff_dds(tp_rt_start, tp_rt_end).tv_nsec);*/
 
   free(tp_rt_start);
   free(tp_rt_end);

@@ -69,8 +69,6 @@ atomic_ulong finished;
 atomic_ulong total_removes;
 atomic_int np;
 atomic_int nc;
-//atomic_ulong total_sum_rm;
-//atomic_ulong total_sum_ins;
 
 unsigned int program_duration = 10;
 unsigned int queue_count_arg = 0;
@@ -88,12 +86,9 @@ unsigned long computation_load = 0;
 bool hook;
 pthread_barrier_t barrier;
 
-unsigned long *n_inserted_arr;
-unsigned long *n_removed_arr;
-unsigned long *sums;
-
-int producers = 0;
-int consumers = 0;
+unsigned long n_inserted;
+unsigned long n_removed;
+unsigned long sum;
 
 /***********
  * FUNCTIONS
@@ -143,20 +138,14 @@ void *work(void *arg_struct) {
 
   struct q_args *args = arg_struct;
   long *tid = args->tid;
-  long *qid = (long*) malloc(sizeof(long));
-  *qid = *tid/2;
-  //int q_count = args->q_count;
-  //int t_count = args->t_count;
+
+  if (*tid != 0) {
+    return NULL;
+  }
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_rt_start_insert = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_rt_end_insert = (struct timespec*) malloc (sizeof (struct timespec));
-  struct timespec *tp_thr = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
-  LOG_DEBUG_TD(*tid, "START PROGRAM: \n\tRealtime - %lu.%lu seconds\n", tp_rt_start->tv_sec, tp_rt_start->tv_nsec);
-  LOG_DEBUG_TD(*tid, "\tThread %ld has ID %lu, insertion ratio %d and remove ratio %d\n", 
-    *tid, pthread_self(), q_ins_ratios[*tid / 2], q_rm_ratios[*tid / 2] );
 
   struct stat st = {0};
   if (stat("/tmp/distributed_queue", &st) == -1) {
@@ -199,146 +188,54 @@ void *work(void *arg_struct) {
  /*
   * Set ranges for insertion of random numbers according to q_ins_ratios set in command line arguments
   */
+
   unsigned int lowRange;
   lowRange = 1;
-  //unsigned int highRange;
-  //highRange = computation_load;
+  int *rn;
+  int ret;
+  int x = 0;
 
+  clock_gettime(CLOCK_REALTIME, tp_rt_start);
+  while(1) {
+    rn = generateRandomNumber(lowRange, 100);
+    if (rn == NULL)
+      continue;
 
-  clock_gettime(CLOCK_REALTIME, tp_rt_start_insert);
-  if ( *tid % 2 == 0 ) {
-   /*
-    * PRODUCER
-    */
-    atomic_fetch_add(&np, 1);
-    if ( atomic_load(&np) > producers ) {
-      atomic_fetch_add( &finished, 1);
-      fclose(work_file_ins);
-      fclose(work_file_rm);
-      return NULL;
-    }
+    NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
+    n_inserted++;
+    lockfree_queue_insert_item_by_tid((long) 0, rn);
+    free(rn);
 
-    int *rn;
-    int x = 0;
+    int *retval = (int*) malloc(sizeof(int));
+    ret = lockfree_queue_remove_item_by_tid(qid, retval);
 
-    while(1) {
-      //Start producing items
-      //rn = generateRandomNumber(lowRange, q_ins_ratios[*tid / 2]);
-      rn = generateRandomNumber(lowRange, 100);
-      if (rn == NULL)
-        continue;
+    NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
+    n_removed++;
+    sum += *retval;
+    free(retval);
 
-      NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
-      n_inserted_arr[*tid / 2]++;
-      lockfree_queue_insert_item_by_tid(qid, rn);
-      free(rn);
+    x++;
+    if (x == 5000) {
+      x = 0;
+      clock_gettime(CLOCK_REALTIME, tp_rt_end);
+      struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
+      time_diff(tp_rt_start, tp_rt_end, result);
+      if ( result->tv_sec >= program_duration ) {
+        printf("Time is up, endTime = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
+        printf("Total Inserted %lu items\n", n_inserted);
+        printf("Total removed items %lu items\n", n_removed);
+        printf("Sum of items is %lu\n", sum);
 
-      x++;
-      if (x == 5000) {
-        x = 0;
-        clock_gettime(CLOCK_REALTIME, tp_rt_end_insert);
-        struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
-        time_diff(tp_rt_start_insert, tp_rt_end_insert, result);
-        if ( result->tv_sec >= program_duration ) {
-          pthread_barrier_wait(&barrier);
-          LOG_INFO_TD("Time is up, endTime = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
-          LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid/2]);
-          LOG_INFO_TD("\tTotal Inserted %lu items\n", sum_array(n_inserted_arr));
-
-          atomic_fetch_add( &finished, 1);
-          free(result);
-          free(qid);
-          free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
-          fclose(work_file_ins);
-          fclose(work_file_rm);
-          return NULL;
-        }
         free(result);
+        free(qid);
+        free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
+        fclose(work_file_ins);
+        fclose(work_file_rm);
+        return NULL;
       }
+      free(result);
     }
   }
-  else {
-   /*
-    * CONSUMER
-    */
-    atomic_fetch_add(&nc, 1);
-    if ( atomic_load(&nc) > consumers ) {
-      fclose(work_file_ins);
-      fclose(work_file_rm);
-      return NULL;
-    }
-
-    if ( q_rm_ratios[*tid / 2] == 0 ) {
-      fclose(work_file_ins);
-      fclose(work_file_rm);
-      return NULL;
-    }
-
-    int ret;
-    //int n = 5;
-    while(1) {
-      int *retval = (int*) malloc(sizeof(int));
-      ret = lockfree_queue_remove_item_by_tid(qid, retval);
-      /*void **retvals = malloc(sizeof(void*));
-      ret = lockfree_queue_remove_Nitems_no_lock_by_tid(*qid, n, retvals);*/
-
-      if (ret == -1) {
-        free(retval);
-        unsigned long size = lockfree_queue_size_total();
-        if (size == 0) {
-          unsigned long global_size_val = global_size(false);
-          if ( global_size_val == 0 ) {
-            unsigned long fin = atomic_load( &finished );
-            if ( fin != queue_count_arg ) {
-              continue;
-            }
-            else {
-              clock_gettime(CLOCK_REALTIME, tp_rt_end);
-              clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
-
-              struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
-              time_diff(tp_rt_start, tp_rt_end, result);
-              LOG_DEBUG_TD(*tid, "Total sum of removed items for T[%ld] is %lu\n", *tid, sum_array(sums));
-              LOG_DEBUG_TD(*tid, "Total removed items %lu\n", sum_array(n_removed_arr));
-              LOG_DEBUG_TD(*tid, "Final realtime program time = %lu.%lu\n", 
-                result->tv_sec, result->tv_nsec );
-
-              LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid/2]);
-              LOG_INFO_TD("\tT[%ld]: Sum of items %lu\n", *tid, sums[*tid/2]);
-              LOG_INFO_TD("Total sum of removed items is %lu\n", sum_array(sums));
-              LOG_INFO_TD("Total removed items %lu\n", sum_array(n_removed_arr));
-              LOG_INFO_TD("Final realtime program time = %lu.%lu\n", 
-                result->tv_sec, result->tv_nsec );
-
-              free(result);
-              free(qid);
-              free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
-
-              fclose(work_file_ins);
-              fclose(work_file_rm);
-
-              return NULL;
-            }
-          } //GLOBAL SIZE
-        } //LOCAL SIZE
-      } //RETVAL NULL
-      else {
-        NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
-        n_removed_arr[*tid/2]++;
-        sums[*tid/2] += *retval;
-        free(retval);
-        /*for (int k = 0; k < n; k++) {
-          int *val = retvals[k];
-          NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *val);
-          n_removed_arr[*tid/2]++;
-          sums[*tid/2] += *val;
-          //printf("Remove: '%d'", *val);
-        }
-        free(retvals);*/
-      }
-    }
-  }
-
 
 }
 
@@ -753,11 +650,7 @@ int main(int argc, char** argv) {
   }
   lockfree_queue_destroy();
   pthread_barrier_destroy(&barrier);
-
-
   free(q_ins_ratios); free(q_rm_ratios);
-  free(n_inserted_arr); free(n_removed_arr); free(sums);
-
 
   printf("Main finished\n");
   return 0;
