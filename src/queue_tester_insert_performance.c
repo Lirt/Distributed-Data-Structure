@@ -68,9 +68,8 @@ static char doc[] = "DQS by Ondrej Vasko";
 atomic_ulong finished;
 atomic_ulong total_inserts;
 atomic_ulong total_removes;
-//atomic_ulong total_sum_rm;
-//atomic_ulong total_sum_ins;
 
+unsigned long max_qsize = 0;
 unsigned int program_duration = 0;
 unsigned int item_amount = 0;
 unsigned int queue_count_arg = 0;
@@ -103,9 +102,8 @@ unsigned long sum_arr_t(unsigned long* arr) {
 
 }
 
-struct timespec *time_diff(struct timespec *start, struct timespec *end) {
+int time_diff(struct timespec *start, struct timespec *end, struct timespec *result) {
 
-  struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));;
   if ( ( end->tv_nsec - start->tv_nsec ) < 0 ) {
     result->tv_sec = end->tv_sec - start->tv_sec - 1;
     result->tv_nsec = 1000000000 + end->tv_nsec - start->tv_nsec;
@@ -114,7 +112,8 @@ struct timespec *time_diff(struct timespec *start, struct timespec *end) {
     result->tv_sec = end->tv_sec - start->tv_sec;
     result->tv_nsec = end->tv_nsec - start->tv_nsec;
   }
-  return result;
+
+  return 0;
 
 }
 
@@ -156,6 +155,7 @@ void *work(void *arg_struct) {
     */
     int *rn;
     int x = 0;
+    printf("INSERT: My tid is %ld\n", *qid);
 
     if ( item_amount > 0 ) {
       while(1) {
@@ -164,34 +164,39 @@ void *work(void *arg_struct) {
         if (rn == NULL)
           continue;
 
-        //atomic_fetch_add( &total_inserts, 1);
-
         x++;
         if (x == 10000) {
           x = 0;
           if ( sum_arr_t(n_inserted_arr) > item_amount ) {
-            //atomic_fetch_sub( &total_inserts, 1);
-            //LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+            free(rn);
             LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid / 2]);
+            printf("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid / 2]);
 
             if (*tid == 0) {
               LOG_INFO_TD("Total inserted items is %lu\n", sum_arr_t(n_inserted_arr));
+              printf("Total inserted items is %lu\n", sum_arr_t(n_inserted_arr));
+              struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
               clock_gettime(CLOCK_REALTIME, tp_rt_end);
-              LOG_INFO_TD("Final realtime program time = %lu sec, %lu nsec\n", 
-                time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-              lockfree_queue_stop_watcher();
+              time_diff(tp_rt_start, tp_rt_end, result);
+              LOG_INFO_TD("Final realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+              printf("Final realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+              free(result);
             }
+            free(tp_rt_start);
+            free(tp_rt_end);
             return NULL;
           }
           //lockfree_queue_insert_item(rn);
           lockfree_queue_insert_item_by_tid(qid, rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
+          free(rn);
           n_inserted_arr[*tid / 2]++;
         }
         else {
           //lockfree_queue_insert_item(rn);
           lockfree_queue_insert_item_by_tid(qid, rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
+          free(rn);
           n_inserted_arr[*tid / 2]++;
         }
       }
@@ -203,27 +208,32 @@ void *work(void *arg_struct) {
         if (rn == NULL)
           continue;
 
-        //atomic_fetch_add( &total_inserts, 1);
-        
         x++;
         if (x == 10000) {
           clock_gettime(CLOCK_REALTIME, tp_rt_end);
           x = 0;
-          if ( time_diff(tp_rt_start, tp_rt_end)->tv_sec >= program_duration ) {
-            //LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+          struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
+          clock_gettime(CLOCK_REALTIME, tp_rt_end);
+          time_diff(tp_rt_start, tp_rt_end, result);
+          if ( result->tv_sec >= program_duration ) {
+            free(rn);
             LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid / 2]);
+            printf("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid / 2]);
             if (*tid == 0) {
-              //LOG_INFO_TD("Total inserted items is %lu\n", atomic_load(&total_inserts));
               LOG_INFO_TD("Total inserted items is %lu\n", sum_arr_t(n_inserted_arr));
-              clock_gettime(CLOCK_REALTIME, tp_rt_end);
-              LOG_INFO_TD("Final realtime program time = %lu sec, %lu nsec\n", 
-                time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-              lockfree_queue_stop_watcher();
+              LOG_INFO_TD("Final realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+              printf("Total inserted items is %lu\n", sum_arr_t(n_inserted_arr));
+              printf("Final realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+
+              free(result);
             }
+            free(tp_rt_start);
+            free(tp_rt_end);
             return NULL;
           }
           //lockfree_queue_insert_item(rn);
           lockfree_queue_insert_item_by_tid(qid, rn);
+          free(rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
           n_inserted_arr[*tid / 2]++;
         }
@@ -231,6 +241,7 @@ void *work(void *arg_struct) {
           //lockfree_queue_insert_item(rn);
           lockfree_queue_insert_item_by_tid(qid, rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
+          free(rn);
           n_inserted_arr[*tid / 2]++;
         }
       }
@@ -501,11 +512,16 @@ int main(int argc, char** argv) {
 
   /*
    * USAGE 
-   * queue_tester_insert_performance -d 0 -q 1 -l false
-   * queue_tester_insert_performance -d 0 -q 2 -l false
-   * queue_tester_insert_performance -d 0 -q 4 -l false
-   * queue_tester_insert_performance -d 0 -q 8 -l false
-   * queue_tester_insert_performance -d 0 -q 16 -l false
+   * queue_tester_insert_performance -d 6 -q 1
+   * queue_tester_insert_performance -d 6 -q 2
+   * queue_tester_insert_performance -d 6 -q 4
+   * queue_tester_insert_performance -d 6 -q 8
+   * queue_tester_insert_performance -d 6 -q 16
+   * queue_tester_insert_performance -a 80000000 -q 1
+   * queue_tester_insert_performance -a 80000000 -q 2
+   * queue_tester_insert_performance -a 80000000 -q 4
+   * queue_tester_insert_performance -a 80000000 -q 8
+   * queue_tester_insert_performance -a 80000000 -q 16
    */
 
 
@@ -515,8 +531,6 @@ int main(int argc, char** argv) {
   for (int i = 0; i < 8; i++) {
     q_ratios[i] = 1;
   }
-
-  //TODO add len_s parameter for dynamic threshold
 
   struct argp_option options[] = { 
     { "duration",                 'd', "<NUM> in seconds",0, "Sets duration of inserting items in seconds", 1},
@@ -548,20 +562,17 @@ int main(int argc, char** argv) {
   atomic_init(&finished, 0);
   atomic_init(&total_inserts, 0);
   atomic_init(&total_removes, 0);
-    //atomic_init(&total_sum_rm, 0);
-    //atomic_init(&total_sum_ins, 0);
 
-    //struct lockfree_queue_args_struct *lqa;
   pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int*), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
-    global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook);
+    global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook, max_qsize );
 
   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
     pthread_join(cb_threads[i], NULL);
   }
-
+  lockfree_queue_destroy();
   printf("Main finished\n");
-  MPI_Finalize();
+
   return 0;
 
 }

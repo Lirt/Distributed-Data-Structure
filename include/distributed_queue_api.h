@@ -37,5 +37,6 @@ extern void lockfree_queue_insert_N_items(void** values, int item_count);
 extern int lockfree_queue_remove_item(void* buffer);
 extern int lockfree_queue_remove_item_by_tid (void* t, void* buffer);
 
+extern unsigned long lockfree_queue_size_by_tid(void *tid);
 extern unsigned long lockfree_queue_size_total(void);
 extern unsigned long lockfree_queue_size_total_consistent(void);

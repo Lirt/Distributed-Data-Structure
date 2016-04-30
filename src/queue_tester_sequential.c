@@ -145,6 +145,7 @@ void *work(void *arg_struct) {
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
   struct stat st = {0};
@@ -152,47 +153,9 @@ void *work(void *arg_struct) {
     mkdir("/tmp/distributed_queue", 0777);
   }
 
-  pid_t pid = getpid();
-  int pid_int = (int) pid;
-  char pid_str[8];
-  sprintf(pid_str, "%d", pid_int);
-
-  char filename_ins[60] = "/tmp/distributed_queue/work_";
-  char filename_rm[60] = "/tmp/distributed_queue/work_";
-  char tid_str[4];
-  char ins[5] = "ins_";
-  char rm[4] = "rm_";
-
-  strcat(filename_ins, ins);
-  strcat(filename_rm, rm);
-
-  sprintf(tid_str, "%ld_", *tid);
-  strcat(filename_ins, tid_str);
-  strcat(filename_rm, tid_str);
-  strcat(filename_ins, pid_str);
-  strcat(filename_rm, pid_str);
-
-
-  FILE *work_file_ins = fopen(filename_ins, "wb");
-  if ( work_file_ins == NULL ) {
-    LOG_ERR_T(*tid, "ERROR: error in opening file %s\n", filename_ins);
-    exit(-1);
-  }
-
-  FILE *work_file_rm = fopen(filename_rm, "wb");
-  if ( work_file_rm == NULL ) {
-    LOG_ERR_T(*tid, "ERROR: error in opening file %s\n", filename_rm);
-    exit(-1);
-  }
-
- /*
-  * Set ranges for insertion of random numbers according to q_ins_ratios set in command line arguments
-  */
-
-  unsigned int lowRange;
-  lowRange = 1;
+  long qid = 0;
+  unsigned int lowRange = 1;
   int *rn;
-  int ret;
   int x = 0;
 
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
@@ -201,15 +164,12 @@ void *work(void *arg_struct) {
     if (rn == NULL)
       continue;
 
-    NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
-    n_inserted++;
-    lockfree_queue_insert_item_by_tid((long) 0, rn);
+    lockfree_queue_insert_item_by_tid(&qid, rn);
     free(rn);
+    n_inserted++;
 
     int *retval = (int*) malloc(sizeof(int));
-    ret = lockfree_queue_remove_item_by_tid(qid, retval);
-
-    NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
+    lockfree_queue_remove_item_by_tid(&qid, retval);
     n_removed++;
     sum += *retval;
     free(retval);
@@ -218,7 +178,6 @@ void *work(void *arg_struct) {
     if (x == 5000) {
       x = 0;
       clock_gettime(CLOCK_REALTIME, tp_rt_end);
-      struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
       time_diff(tp_rt_start, tp_rt_end, result);
       if ( result->tv_sec >= program_duration ) {
         printf("Time is up, endTime = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
@@ -227,13 +186,9 @@ void *work(void *arg_struct) {
         printf("Sum of items is %lu\n", sum);
 
         free(result);
-        free(qid);
-        free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
-        fclose(work_file_ins);
-        fclose(work_file_rm);
+        free(tp_rt_start); free(tp_rt_end);
         return NULL;
       }
-      free(result);
     }
   }
 
@@ -275,16 +230,6 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
         }
       }
 
-      n_inserted_arr = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
-      n_removed_arr = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
-      free(sums);
-      sums = (unsigned long*) malloc(queue_count_arg * sizeof(unsigned long));
-      for (int i = 0; i < queue_count_arg; i++) {
-        n_inserted_arr[i] = 0;
-        n_removed_arr[i] = 0;
-        sums[i] = 0;
-      }
-
       printf("OPT: Queue count set to %s\n", arg);
       break;
     }
@@ -309,31 +254,6 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
     case 'h': {
       printf("OPT: Hook enabled. Enter 'set var debug_wait=1' to start program.\n");
       hook = true;
-      break;
-    }
-
-    case 'p': {
-      char *endptr;
-      producers = strtoul(arg, &endptr, 10);
-      if ( endptr == arg ) {
-        //LOG_ERR_T( (long) -1, "Cannot parse number\n");
-        fprintf(stderr, "OPT[ERROR]: \n");
-        exit(-1);
-      }
-      pthread_barrier_init(&barrier, NULL, producers);
-      printf("OPT: Number of producer threads set to %d.\n", producers);
-      break;
-    }
-
-    case 'c': {
-      char *endptr;
-      consumers = strtoul(arg, &endptr, 10);
-      if ( endptr == arg ) {
-        //LOG_ERR_T( (long) -1, "Cannot parse number\n");
-        fprintf(stderr, "OPT[ERROR]: Number of consumer threads must be number\n");
-        exit(-1);
-      }
-      printf("OPT: Number of consumer threads set to %d.\n", consumers);
       break;
     }
 
@@ -597,11 +517,6 @@ int main(int argc, char** argv) {
     q_rm_ratios[i] = 1;
   }
 
-  sums = (unsigned long*) malloc(8 * sizeof(unsigned long));
-  for (int i = 0; i < queue_count_arg; i++) {
-    sums[i] = 0;
-  }
-
   //TODO add len_s parameter for dynamic threshold
 
   struct argp_option options[] = { 
@@ -610,8 +525,6 @@ int main(int argc, char** argv) {
     { "lb-thread",                'l', "true/false",      0, "Enables or disables dedicated load balancing thread (default false).", 2},
     { "hook",                     'h', NULL,      0, "Waits for gdb hook on pid. In gdb enter 'set var debug_wait=1' \
                                                         and after that 'continue' to start program.", 2},
-    { "producers",                'p', "<NUM>",           0, "Amount of producer threads", 4},
-    { "consumers",                'c', "<NUM>",           0, "Amount of consumer threads", 4},
     { "max_qsize",                's', "<NUM>",           0, "Maximum size of queue", 4},
     { "local-threshold-percent",  150, "<DECIMAL>",       0, "Sets threshold for local load balancing thread in percentage", 2},
     { "global-threshold-percent", 151, "<DECIMAL>",       0, "Sets threshold for global load balancing thread in percentage", 2},

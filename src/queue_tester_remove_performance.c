@@ -56,6 +56,8 @@
    #include "/usr/include/mpich-x86_64/mpi.h"
 #endif
 
+#include <gperftools/profiler.h>
+
 /*
  * GLOBAL VARIABLES
  */
@@ -67,9 +69,8 @@ static char doc[] = "DQS by Ondrej Vasko";
 atomic_ulong finished;
 atomic_ulong total_inserts;
 atomic_ulong total_removes;
-//atomic_ulong total_sum_rm;
-//atomic_ulong total_sum_ins;
 
+unsigned long max_qsize = 0;
 unsigned int program_duration = 0;
 unsigned int item_amount = 0;
 unsigned int queue_count_arg = 0;
@@ -84,6 +85,7 @@ unsigned int *q_ratios = NULL;
 unsigned long computation_load = 0;
 bool hook = false;
 pthread_barrier_t barrier;
+pthread_barrier_t barrier_rm;
 
 unsigned long *n_removed_arr;
 
@@ -103,9 +105,8 @@ unsigned long sum_arr_t(unsigned long* arr) {
 
 }
 
-struct timespec *time_diff(struct timespec *start, struct timespec *end) {
+int time_diff(struct timespec *start, struct timespec *end, struct timespec *result) {
 
-  struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));;
   if ( ( end->tv_nsec - start->tv_nsec ) < 0 ) {
     result->tv_sec = end->tv_sec - start->tv_sec - 1;
     result->tv_nsec = 1000000000 + end->tv_nsec - start->tv_nsec;
@@ -114,7 +115,8 @@ struct timespec *time_diff(struct timespec *start, struct timespec *end) {
     result->tv_sec = end->tv_sec - start->tv_sec;
     result->tv_nsec = end->tv_nsec - start->tv_nsec;
   }
-  return result;
+
+  return 0;
 
 }
 
@@ -139,7 +141,6 @@ void *work(void *arg_struct) {
   long *tid = args->tid;
   long *qid = (long*) malloc(sizeof(long));
   *qid = *tid/2;
-  //unsigned long pthread_tid = pthread_self();
 
   struct stat st = {0};
   if (stat("/tmp/distributed_queue", &st) == -1) {
@@ -148,6 +149,7 @@ void *work(void *arg_struct) {
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_end = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, tp_rt_start);
 
   if ( *tid % 2 == 0 ) {
@@ -156,39 +158,85 @@ void *work(void *arg_struct) {
     */
     unsigned long n_inserted = 0;
     int *rn;
+    int x = 1;
+    //printf("INSERT: My tid is %ld\n", *qid);
 
-    while(1) {
-      //Start producing items
-      rn = generateRandomNumber(0, 100);
-      if (rn == NULL)
-        continue;
-
-      atomic_fetch_add( &total_inserts, 1 );
-      n_inserted++;
-
-      if ( atomic_load(&total_inserts) > item_amount ) {
-        atomic_fetch_sub( &total_inserts, 1);
-        atomic_fetch_add( &finished, 1);
-        LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
-
-        if (*tid == 0) {
-          LOG_INFO_TD("Total inserted items is %lu\n", atomic_load(&total_inserts));
-          clock_gettime(CLOCK_REALTIME, tp_rt_end);
-          LOG_INFO_TD("Final inset realtime program time = %lu.%lu\n", 
-            time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-        }
-
-        return NULL;
-      }
-      else {
+    if ( item_amount > 0 ) {
+      while(1) {
+        //Start producing items
+        rn = generateRandomNumber(0, 100);
+        if (rn == NULL)
+          continue;
+          
         lockfree_queue_insert_item_by_tid(qid, rn);
+        atomic_fetch_add( &total_inserts, 1 );
+        n_inserted++;
+        free(rn);
+
+        if ( atomic_load(&total_inserts) >= item_amount ) {
+          atomic_fetch_add( &finished, 1);
+          LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+          printf("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+          //printf("Queue_size[%ld] is: %ld\n", *qid, lockfree_queue_size_by_tid(qid));
+
+          if (*tid == 0) {
+            LOG_INFO_TD("Total inserted items is %lu\n", atomic_load(&total_inserts));
+            printf("Total inserted items is %lu\n", atomic_load(&total_inserts));
+            clock_gettime(CLOCK_REALTIME, tp_rt_end);
+            time_diff(tp_rt_start, tp_rt_end, result);
+            LOG_INFO_TD("Final insert realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+            printf("Final insert realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+
+            free(result);
+          }
+          free(tp_rt_start);
+          free(tp_rt_end);
+
+          return NULL;
+        }
+      }
+    }
+    if ( program_duration > 0 ) {
+      while(1) {
+        //Start producing items
+        rn = generateRandomNumber(0, 100);
+        if (rn == NULL)
+          continue;
+
+        lockfree_queue_insert_item_by_tid(qid, rn);
+        atomic_fetch_add( &total_inserts, 1 );
+        n_inserted++;
+        free(rn);
+
+        x++;
+        if (x == 10000) {
+          x = 1;
+          clock_gettime(CLOCK_REALTIME, tp_rt_end);
+          time_diff(tp_rt_start, tp_rt_end, result);
+          if ( result->tv_sec >= program_duration ) {
+            atomic_fetch_add(&finished, 1);
+            LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+            printf("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
+
+            if (*tid == 0) {
+              LOG_INFO_TD("Total inserted items is %lu\n", atomic_load(&total_inserts));
+              printf("Total inserted items is %lu\n", atomic_load(&total_inserts));
+              clock_gettime(CLOCK_REALTIME, tp_rt_end);
+              time_diff(tp_rt_start, tp_rt_end, result);
+              LOG_INFO_TD("Final insert realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+              printf("Final insert realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+              free(result);
+            }
+            free(tp_rt_start);
+            free(tp_rt_end);
+
+            return NULL;
+          }
+        }
       }
     }
   }
   else {
-
-    int timeout = 0;
-    //unsigned long n_removed = 0;
 
     while (1) {
       unsigned long fin = atomic_load( &finished );
@@ -200,44 +248,49 @@ void *work(void *arg_struct) {
         break;
       }
     }
+    
+    //printf("REMOVE: My tid is %ld\n", *qid);
 
     pthread_barrier_wait(&barrier);
     clock_gettime(CLOCK_REALTIME, tp_rt_start);
+    int ret;
 
     while(1) {
       int *retval = (int*) malloc(sizeof(int));
-      ret = lockfree_queue_remove_item_by_tid(qid, timeout, retval);
+      ret = lockfree_queue_remove_item_by_tid(qid, retval);
 
-      if (ret == NULL) {
+      if (ret == -1) {
+        free(retval);
         unsigned long size = lockfree_queue_size_total();
         if (size == 0) {
-          /*unsigned long size2 = lockfree_queue_size_total_consistent();
-          if (size2 != 0) {
-            continue;
-          }*/
+          size = global_size(false);
           if (size != 0) {
             continue;
           }
-          clock_gettime(CLOCK_REALTIME, tp_rt_end);
+          pthread_barrier_wait(&barrier_rm);
+        
+          if ( *tid / 2 == 0) {
+            clock_gettime(CLOCK_REALTIME, tp_rt_end);
+            time_diff(tp_rt_start, tp_rt_end, result);
+            LOG_INFO_TD("Total removed items %lu\n", sum_arr_t(n_removed_arr));
+            printf("Total removed items %lu\n", sum_arr_t(n_removed_arr));
+            LOG_INFO_TD("Final remove realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+            printf("Final remove realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+          }
 
           LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid / 2]);
+          printf("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid / 2]);
 
-          if ( *tid / 2 == 0) {
-            //LOG_INFO_TD("Total removed items %lu\n", atomic_load(&total_removes));
-            LOG_INFO_TD("Total removed items %lu\n", sum_arr_t(n_removed_arr));
-            LOG_INFO_TD("Final remove realtime program time = %lu.%lu\n", 
-              time_diff(tp_rt_start, tp_rt_end)->tv_sec, time_diff(tp_rt_start, tp_rt_end)->tv_nsec );
-          }
+          //sleep(30);
 
-          if ( (long) (*tid / 2) == 0 ) {
-            lockfree_queue_stop_watcher();
-          }
+          free(result);
           return NULL;
         }
       }
       else {
         //n_removed++;
         n_removed_arr[*tid / 2]++;
+        free(retval);
         //atomic_fetch_add( &total_removes, 1);
       }
     }
@@ -299,6 +352,7 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       }
 
       pthread_barrier_init(&barrier, NULL, queue_count_arg);
+      pthread_barrier_init(&barrier_rm, NULL, queue_count_arg);
 
       printf("OPT: Queue count set to %s\n", arg);
       break;
@@ -526,8 +580,6 @@ int main(int argc, char** argv) {
     q_ratios[i] = 1;
   }
 
-  //TODO add len_s parameter for dynamic threshold
-
   struct argp_option options[] = { 
     { "duration",                 'd', "<NUM> in seconds",0, "Sets duration of inserting items in seconds", 1},
     { "amount",                 'a', "<NUM> in items",0, "Sets amount of items to insert", 1},
@@ -558,21 +610,20 @@ int main(int argc, char** argv) {
   atomic_init(&finished, 0);
   atomic_init(&total_inserts, 0);
   atomic_init(&total_removes, 0);
-    //atomic_init(&total_sum_rm, 0);
-    //atomic_init(&total_sum_ins, 0);
 
-    //struct lockfree_queue_args_struct *lqa;
   pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
-    global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook);
+    global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook, max_qsize);
 
   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
     pthread_join(cb_threads[i], NULL);
   }
   pthread_barrier_destroy(&barrier);
+  pthread_barrier_destroy(&barrier_rm);
 
+  lockfree_queue_destroy();
   printf("Main finished\n");
-  MPI_Finalize();
+
   return 0;
 
 }

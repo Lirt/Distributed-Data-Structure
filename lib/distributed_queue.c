@@ -167,11 +167,16 @@ FILE *log_file_global_bal;
  */
 
 atomic_ulong moved_items_log;
+atomic_ulong moved_items_global_log;
 atomic_ulong load_balancer_call_count_watcher;
 atomic_ulong load_balancer_call_count_remove;
 atomic_ulong load_balancer_call_count_global;
 atomic_ulong global_size_call_count;
 atomic_ulong global_size_call_count_in_wait;
+atomic_ulong global_balance_executed_as_master_count; //only for master if balance is executed
+atomic_ulong global_balance_rejected_as_master_count;
+atomic_ulong global_balance_call_count;
+atomic_ulong global_balance_call_count_in_wait;
 time_t total_rt_lb_time_sec;
 long total_rt_lb_time_nsec;
 time_t total_thr_lb_time_sec;
@@ -180,7 +185,10 @@ time_t total_rt_global_size_time_sec;
 long total_rt_global_size_time_nsec;
 time_t total_thr_global_size_time_sec;
 long total_thr_global_size_time_nsec;
-
+time_t total_rt_global_balance_time_sec;
+long total_rt_global_balance_time_nsec;
+time_t total_thr_global_balance_time_sec;
+long total_thr_global_balance_time_nsec;
 /*
  * GLOBAL BALANCING
  */
@@ -379,9 +387,17 @@ void lockfree_queue_destroy() {
   pthread_cond_destroy(&load_balance_cond);
   pthread_mutex_destroy(&load_balance_mutex);
 
-  LOG_INFO_TD("STATISTICS: \n\tQsize watcher was called %lu times\n\tLoad balance was called from remove %lu times\
-    \n\tGlobal balance was initiated %lu times\n\tGlobal size was executed %lu times\n\tGlobal size only read last value %lu times\n\tLocal balance moved %lu items\n", 
-    atomic_load(&load_balancer_call_count_watcher), atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), atomic_load(&global_size_call_count), atomic_load(&global_size_call_count_in_wait), atomic_load(&moved_items_log));
+  LOG_INFO_TD("STATISTICS: \n\t \
+    Qsize watcher was called %lu times\n\t \
+    Load balance was called from remove %lu times\n\t \
+    Global balance was initiated %lu times\n\t \
+    Global size was executed %lu times\n\t \
+    Global size only read last value %lu times\n\t \
+    Local balance moved %lu items\n\t \
+    Global balance was executed as master %lu times\n\t \
+    Global balance was rejected as master %lu times\n\t \
+    Global balance moved %lu items\n\t", 
+    atomic_load(&load_balancer_call_count_watcher), atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), atomic_load(&global_size_call_count), atomic_load(&global_size_call_count_in_wait), atomic_load(&moved_items_log), atomic_load(&global_balance_executed_as_master_count), atomic_load(&global_balance_rejected_as_master_count), atomic_load(&moved_items_global_log));
 
   //double sum_rt_time = sum_time(total_rt_lb_time_sec, total_rt_lb_time_nsec);
   /*LOG_INFO_TD("\tTotal realtime spent in load balancer: %lf seconds\
@@ -393,6 +409,11 @@ void lockfree_queue_destroy() {
   sum_thr_time = sum_time(total_thr_global_size_time_sec, total_thr_global_size_time_nsec);
   LOG_INFO_TD("\tTotal realtime spent in global size: %lf seconds\
     \n\tTotal thread time spent in global size: %lf seconds\n", sum_rt_time, sum_thr_time);
+
+  sum_rt_time = sum_time(total_rt_global_balance_time_sec, total_rt_global_balance_time_nsec);
+  sum_thr_time = sum_time(total_thr_global_balance_time_sec, total_thr_global_balance_time_sec);
+  LOG_INFO_TD("\tTotal realtime spent in global balance: %lf seconds\
+    \n\tTotal thread time spent in global balance: %lf seconds\n", sum_rt_time, sum_thr_time);
 
   free(last_global_rebalance_call_send_time);
   free(last_global_rebalance_done_time);
@@ -628,11 +649,16 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
    */
 
   atomic_init(&moved_items_log, 0);
+  atomic_init(&moved_items_global_log, 0);
   atomic_init(&load_balancer_call_count_watcher, 0);
   atomic_init(&load_balancer_call_count_remove, 0);
   atomic_init(&load_balancer_call_count_global, 0);
   atomic_init(&global_size_call_count, 0);
   atomic_init(&global_size_call_count_in_wait, 0);
+  atomic_init(&global_balance_executed_as_master_count, 0); //only for master if balance is executed
+  atomic_init(&global_balance_rejected_as_master_count, 0);
+  atomic_init(&global_balance_call_count, 0);
+  atomic_init(&global_balance_call_count_in_wait, 0);
   atomic_init(&rm_count, 0);
   atomic_init(&rm_count_last, 0);
   total_rt_lb_time_sec = 0;
@@ -2366,13 +2392,16 @@ int global_balance(long tid) {
 
   struct timespec *balance_start_time = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *balance_end_time = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *balance_start_thr_time = (struct timespec*) malloc (sizeof (struct timespec));
+  struct timespec *balance_end_thr_time = (struct timespec*) malloc (sizeof (struct timespec));
   clock_gettime(CLOCK_REALTIME, balance_start_time);
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, balance_start_thr_time);
   
   if ( pthread_rwlock_trywrlock(&load_balance_global_rwlock) == 0 ) {
     //Got lock
     if ( time_diff_dds(last_global_rebalance_call_send_time, balance_start_time).tv_sec > 0 ) {
       //Last rebalance was more than one second ago, do rebalance again
-
+      atomic_fetch_add(&global_balance_call_count, 1);
       clock_gettime(CLOCK_REALTIME, last_global_rebalance_call_send_time);
       GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Starting global balance in %ld.%ld\n", last_global_rebalance_call_send_time->tv_sec, last_global_rebalance_call_send_time->tv_nsec);
       atomic_fetch_add(&load_balancer_call_count_global, 1);
@@ -2388,6 +2417,7 @@ int global_balance(long tid) {
       } 
       else if (buf == 1) {
         GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Node %d: Balancing has not run, because last balance was too early\n", comm_rank);
+        atomic_fetch_add(&global_balance_call_count_in_wait, 1);
       }
 
       pthread_rwlock_unlock(&load_balance_global_rwlock);
@@ -2395,8 +2425,11 @@ int global_balance(long tid) {
     }
     else {
       pthread_rwlock_unlock(&load_balance_global_rwlock);
+      atomic_fetch_add(&global_balance_call_count_in_wait, 1);
       free(balance_start_time);
       free(balance_end_time);
+      free(balance_start_thr_time);
+      free(balance_end_thr_time);
       return 1; //Rebalance time not more than 1 second
     }
 
@@ -2404,26 +2437,41 @@ int global_balance(long tid) {
   else {
     GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Global balance already locked, waiting to finish\n");
     if ( pthread_rwlock_rdlock(&load_balance_global_rwlock) != 0 ) {
+      atomic_fetch_add(&global_balance_call_count_in_wait, 1);
       free(balance_start_time);
       free(balance_end_time);
+      free(balance_start_thr_time);
+      free(balance_end_thr_time);
       return -1;  // Error in rdlock
     }
     else {
       GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Node %d: Global balance finished, got rdlock and returning\n", comm_rank);
       pthread_rwlock_unlock(&load_balance_global_rwlock);
+      atomic_fetch_add(&global_balance_call_count_in_wait, 1);
       free(balance_start_time);
       free(balance_end_time);
+      free(balance_start_thr_time);
+      free(balance_end_thr_time);
       return 2; //Rebalance already started, waiting for results and returning
     }
   }
 
-
   clock_gettime(CLOCK_REALTIME, balance_end_time);
-  GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Global balance time was %lu.%lu\n", 
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, balance_end_thr_time);
+  GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Global balance Realtime time was %lu sec %lu nsec\n", 
     time_diff_dds(balance_start_time, balance_end_time).tv_sec, time_diff_dds(balance_start_time, balance_end_time).tv_nsec);
+  GLOBAL_COMM_LOG_INFO_TD(comm_rank, "Global balance Thread time was %lu sec %lu nsec\n", 
+    time_diff_dds(balance_start_thr_time, balance_end_thr_time).tv_sec, time_diff_dds(balance_start_thr_time, balance_end_thr_time).tv_nsec);
+
+  total_rt_global_balance_time_sec += time_diff_dds(balance_start_time, balance_end_time).tv_sec;
+  total_rt_global_balance_time_nsec += time_diff_dds(balance_start_time, balance_end_time).tv_nsec;
+  total_thr_global_balance_time_sec += time_diff_dds(balance_start_thr_time, balance_end_thr_time).tv_sec;
+  total_thr_global_balance_time_nsec += time_diff_dds(balance_start_thr_time, balance_end_thr_time).tv_nsec;
 
   free(balance_start_time);
   free(balance_end_time);
+  free(balance_start_thr_time);
+  free(balance_end_thr_time);
 
   return 0; //Rebalance finished successfuly
 
@@ -2491,8 +2539,10 @@ void* comm_listener_global_balance() {
         int code_805 = 1; 
         //rebalance finished unsuccessfuly
         MPI_Send(&code_805, 1, MPI_INT, source_node, 805, MPI_COMM_WORLD); 
+        atomic_fetch_add(&global_balance_rejected_as_master_count, 1);
         continue;
       }
+      atomic_fetch_add(&global_balance_executed_as_master_count, 1);
 
       short msg = 0;
       int cnt = 0;
@@ -2959,6 +3009,7 @@ int send_data(int dst, unsigned long count) {
   
   free(int_arr);
   free(sizes);
+  atomic_fetch_add(&moved_items_global_log, count);
 
   return 0;
 

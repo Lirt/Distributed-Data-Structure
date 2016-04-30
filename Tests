@@ -142,3 +142,203 @@ mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --l
 mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=pair
 mpirun -np 4 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=all
 mpirun -np 4 bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 2 -l false --local-balance-type=pair
+
+
+###########################################################
+30.4.2016 TESTS:
+1. 7x
+bin/queue_tester_sequential -d 10 -q 1
+R1 32035000
+R2 32125000
+R3 32075000
+R4 32115000
+R5 32135000
+R6 32020000
+R7 32010000
+
+2. 7x
+bin/queue_tester_sequential -d 60 -q 1
+R1 186650000
+R2 190565000
+R3 191270000
+R4 191130000
+R5 192640000
+R6 192685000
+R7 193035000
+
+3. 7x
+bin/queue_tester_sequential -d 300 -q 1
+R1 967385000
+R2 967145000
+R3 969780000
+R4 963815000
+R5 968265000
+R6 968230000
+R7 967175000
+
+---------------------------------------
+
+4. 7x
+bin/queue_tester_insert_performance -q 1 -d 7
+R1 39219999
+R2 39549999
+R3 39549999
+R4 37299999
+R5 38069999
+R6 38679999
+R7 38079999
+
+5. 7x
+bin/queue_tester_insert_performance -q 2 -d 7
+R1 61399998
+R2 56521018
+R3 63392922
+R4 57417437
+R5 63609998
+R6 62824798
+R7 61627852
+
+6. 7x
+bin/queue_tester_insert_performance -q 4 -d 7
+R1 60882754
+R2 62734926
+R3 62121238
+R4 61156220
+R5 61389996
+R6 60327977
+R7 60645244
+
+7. 7x
+bin/queue_tester_insert_performance -q 8 -d 7
+R1 41248456
+R2 43338756
+R3 43170732
+R4 43104991
+R5 43136207
+R6 42225453
+R7 43490386
+
+8. 7x
+bin/queue_tester_insert_performance -q 16 -d 7
+R1 39984511
+R2 39661932
+R3 39639709
+R4 40134319
+R5 39782807
+R6 39175305
+R7 36287877
+
+-------------------------------------------
+
+9. 7x
+bin/queue_tester_insert_performance -q 1 -a 80000000
+R1 14 sec, 316236892 nsec
+R2 14 sec, 7295217 nsec
+R3 14 sec, 44364565 nsec
+R4 14 sec, 119432188 nsec
+R5 14 sec, 124917873 nsec
+R6 14 sec, 17951744 nsec
+R7 14 sec, 561021078 nsec
+
+10. 7x
+bin/queue_tester_insert_performance -q 2 -d 80000000
+R1 8 sec, 556512440 nsec
+R2 8 sec, 725875453 nsec
+R3 8 sec, 693104461 nsec
+R4 8 sec, 659510696 nsec
+R5 8 sec, 610939778 nsec
+R6 8 sec, 792249392 nsec
+R7 8 sec, 862672000 nsec
+
+11. 7x
+bin/queue_tester_insert_performance -q 4 -d 80000000
+R1 8 sec, 823233550 nsec
+R2 9 sec, 61939901 nsec
+R3 8 sec, 908301805 nsec
+R4 9 sec, 9438421 nsec
+R5 9 sec, 48858489 nsec
+R6 9 sec, 435083910 nsec
+R7 9 sec, 34647546 nsec
+
+12. 7x
+bin/queue_tester_insert_performance -q 8 -d 80000000
+R1 13 sec, 251770288 nsec
+R2 13 sec, 283670897 nsec
+R3 13 sec, 519508941 nsec
+R4 13 sec, 939683370 nsec
+R5 13 sec, 328067319 nsec
+R6 13 sec, 115097219 nsec
+R7 13 sec, 728428475 nsec
+
+----------------------------------------------
+
+#bin/queue_tester_remove_performance -q 1 -d 7
+#Zly test, lebo pri roznych poctoch vlakien sa vytvori rozny pocet itemov.
+#je potrebne mat konstatny pocet itemov a tie vybrat roznym poctom vlakien
+
+----------------------------------------------
+
+for i in $(seq 1 7); do
+  bin/queue_tester_remove_performance -q 4 -a 80000000
+  sleep 3
+done
+
+valgrind --tool=callgrind bin/queue_tester_remove_performance -q 2 -a 80000000
+
+ProfilerStart("/tmp/dump.txt");
+pprof --text /home/ovasko/DP/bin/queue_tester_remove_performance dump_1.txt
+https://sploitfun.wordpress.com/2015/02/10/understanding-glibc-malloc/
+
+export LD_PRELOAD=/usr/lib/libhoard.so
+
+13. 7x
+bin/queue_tester_remove_performance -q 1 -a 80000000
+R1 7 sec, 571722443 nsec
+R2 7 sec, 562389218 nsec
+R3 7 sec, 473210739 nsec
+R4 7 sec, 527310002 nsec
+R5 7 sec, 840165671 nsec
+R6 7 sec, 551062465 nsec
+R7 7 sec, 487905860 nsec
+
+14. 7x
+bin/queue_tester_remove_performance -q 2 -a 80000000
+R1 7 sec, 954710831 nsec
+R2 7 sec, 811415050 nsec
+R3 7 sec, 801925539 nsec
+R4 8 sec, 172294783 nsec
+R5 8 sec, 170088421 nsec
+R6 7 sec, 873134652 nsec
+R7 7 sec, 944408062 nsec
+
+15. 7x
+bin/queue_tester_remove_performance -q 4 -a 80000000
+R1 6 sec, 291302149 nsec
+R2 5 sec, 38819327 nsec
+R3 6 sec, 426596289 nsec
+R4 6 sec, 646094385 nsec
+R5 6 sec, 396632009 nsec
+R6 6 sec, 363346914 nsec
+R7 6 sec, 328993102 nsec
+
+bin/queue_tester_remove_performance -q 8 -a 80000000
+R1 
+R2 
+R3 
+R4 
+R5 
+R6 
+R7 
+
+bin/queue_tester_remove_performance -q 16 -a 80000000
+R1 
+R2 
+R3 
+R4 
+R5 
+R6 
+R7 
+
+bin/queue_tester_remove_performance -q 32 -a 80000000
+bin/queue_tester_remove_performance -q 64 -a 80000000
+
