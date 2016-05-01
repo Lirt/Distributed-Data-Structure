@@ -57,6 +57,8 @@
    #include "/usr/include/mpich-x86_64/mpi.h"
 #endif
 
+#include <gsl/gsl_rng.h>
+
 /*
  * GLOBAL VARIABLES
  */
@@ -69,10 +71,9 @@ atomic_ulong finished;
 atomic_ulong total_removes;
 atomic_int np;
 atomic_int nc;
-//atomic_ulong total_sum_rm;
-//atomic_ulong total_sum_ins;
 
 unsigned int program_duration = 10;
+unsigned int item_amount = 0;
 unsigned int queue_count_arg = 0;
 unsigned long max_qsize = 0;
 bool load_balance_thread_arg = false;
@@ -125,17 +126,19 @@ int time_diff(struct timespec *start, struct timespec *end, struct timespec *res
 
 }
 
-int *generateRandomNumber(int rangeMin, int rangeMax) {
+int *generateRandomNumber(int rangeMin, int rangeMax, gsl_rng *r) {
 
-  int *r;
-  r = (int*) malloc (sizeof(int));
-  if (r == NULL) {
+  int *rn;
+  rn = (int*) malloc (sizeof(int));
+  if (rn == NULL) {
     LOG_ERR_T((long) -1, "Malloc failed\n");
     return NULL;
   }
 
-  *r = rand() % rangeMax + rangeMin;
-  return r;
+  //*r = rand() % rangeMax + rangeMin;
+  //*r = 15;
+  *rn = gsl_rng_uniform_int(r, 20);
+  return rn;
 
 }
 
@@ -147,6 +150,12 @@ void *work(void *arg_struct) {
   *qid = *tid/2;
   //int q_count = args->q_count;
   //int t_count = args->t_count;
+
+  const gsl_rng_type *T;
+  gsl_rng *r;
+  T = gsl_rng_taus;
+  r = gsl_rng_alloc (T);
+  gsl_rng_set(r, *tid);
 
   struct timespec *tp_rt_start = (struct timespec*) malloc (sizeof (struct timespec));
   struct timespec *tp_rt_start_insert = (struct timespec*) malloc (sizeof (struct timespec));
@@ -213,47 +222,91 @@ void *work(void *arg_struct) {
     atomic_fetch_add(&np, 1);
     if ( atomic_load(&np) > producers ) {
       atomic_fetch_add( &finished, 1);
+
+      free(qid);
+      free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
       fclose(work_file_ins);
       fclose(work_file_rm);
+
       return NULL;
     }
 
     int *rn;
     int x = 0;
 
-    while(1) {
-      //Start producing items
-      //rn = generateRandomNumber(lowRange, q_ins_ratios[*tid / 2]);
-      rn = generateRandomNumber(lowRange, 100);
-      if (rn == NULL)
-        continue;
+    if ( item_amount > 0 ) {
+      while(1) {
+        //Start producing items
+        //rn = generateRandomNumber(lowRange, q_ins_ratios[*tid / 2], r);
+        rn = generateRandomNumber(lowRange, 20, r);
+        if (rn == NULL)
+          continue;
 
-      NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
-      n_inserted_arr[*tid / 2]++;
-      lockfree_queue_insert_item_by_tid(qid, rn);
-      free(rn);
+        NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
+        dq_insert_item_by_tid(qid, rn);
+        n_inserted_arr[*tid / 2]++;
+        free(rn);
 
-      x++;
-      if (x == 5000) {
-        x = 0;
-        clock_gettime(CLOCK_REALTIME, tp_rt_end_insert);
-        struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
-        time_diff(tp_rt_start_insert, tp_rt_end_insert, result);
-        if ( result->tv_sec >= program_duration ) {
-          pthread_barrier_wait(&barrier);
-          LOG_INFO_TD("Time is up, endTime = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
-          LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid/2]);
-          LOG_INFO_TD("\tTotal Inserted %lu items\n", sum_array(n_inserted_arr));
+        x++;
+        if (x == 10000) {
+          x = 0;
+          if ( sum_array(n_inserted_arr) >= item_amount ) {
+            clock_gettime(CLOCK_REALTIME, tp_rt_end_insert);
+            struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
+            time_diff(tp_rt_start_insert, tp_rt_end_insert, result);
+            pthread_barrier_wait(&barrier);
+            LOG_INFO_TD("Finished inserting, endTime = %ld sec and %ld nsec\n",  result->tv_sec, result->tv_nsec);
+            LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid/2]);
+            LOG_INFO_TD("\tTotal Inserted %lu items\n", sum_array(n_inserted_arr));
 
-          atomic_fetch_add( &finished, 1);
-          free(result);
-          free(qid);
-          free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
-          fclose(work_file_ins);
-          fclose(work_file_rm);
-          return NULL;
+            atomic_fetch_add( &finished, 1);
+            free(result);
+            free(qid);
+            free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
+            fclose(work_file_ins);
+            fclose(work_file_rm);
+            return NULL;
+          }
         }
-        free(result);
+      }
+    }
+    if ( program_duration > 0 ) {
+      while(1) {
+        //Start producing items
+        //rn = generateRandomNumber(lowRange, q_ins_ratios[*tid / 2], r);
+        rn = generateRandomNumber(lowRange, 20, r);
+        if (rn == NULL)
+          continue;
+
+        NUMBER_ADD_RM_FPRINTF( work_file_ins, filename_ins, "%d\n", *rn );
+        dq_insert_item_by_tid(qid, rn);
+        n_inserted_arr[*tid / 2]++;
+        free(rn);
+
+        x++;
+        if (x == 10000) {
+          x = 0;
+          clock_gettime(CLOCK_REALTIME, tp_rt_end_insert);
+          struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
+          time_diff(tp_rt_start_insert, tp_rt_end_insert, result);
+          if ( result->tv_sec >= program_duration ) {
+            pthread_barrier_wait(&barrier);
+            LOG_INFO_TD("Time is up, endTime = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
+            LOG_INFO_TD("\tT[%ld]: Inserted %lu items\n", *tid, n_inserted_arr[*tid/2]);
+            LOG_INFO_TD("\tTotal Inserted %lu items\n", sum_array(n_inserted_arr));
+
+            atomic_fetch_add( &finished, 1);
+            free(result);
+            free(qid);
+            free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
+            fclose(work_file_ins);
+            fclose(work_file_rm);
+            return NULL;
+          }
+          else {
+            free(result);
+          }
+        }
       }
     }
   }
@@ -263,30 +316,35 @@ void *work(void *arg_struct) {
     */
     atomic_fetch_add(&nc, 1);
     if ( atomic_load(&nc) > consumers ) {
+
+      free(qid);
+      free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
       fclose(work_file_ins);
       fclose(work_file_rm);
+
       return NULL;
     }
 
     if ( q_rm_ratios[*tid / 2] == 0 ) {
+
+      free(qid);
+      free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
       fclose(work_file_ins);
       fclose(work_file_rm);
+
       return NULL;
     }
 
     int ret;
-    //int n = 5;
     while(1) {
       int *retval = (int*) malloc(sizeof(int));
-      ret = lockfree_queue_remove_item_by_tid(qid, retval);
-      /*void **retvals = malloc(sizeof(void*));
-      ret = lockfree_queue_remove_Nitems_no_lock_by_tid(*qid, n, retvals);*/
+      ret = dq_remove_item_by_tid(qid, retval);
 
       if (ret == -1) {
         free(retval);
-        unsigned long size = lockfree_queue_size_total();
+        unsigned long size = dq_local_size();
         if (size == 0) {
-          unsigned long global_size_val = global_size(false);
+          unsigned long global_size_val = dq_global_size(false);
           if ( global_size_val == 0 ) {
             unsigned long fin = atomic_load( &finished );
             if ( fin != queue_count_arg ) {
@@ -325,20 +383,16 @@ void *work(void *arg_struct) {
       else {
         NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *retval);
         n_removed_arr[*tid/2]++;
-        sums[*tid/2] += *retval;
-        free(retval);
-        /*for (int k = 0; k < n; k++) {
-          int *val = retvals[k];
-          NUMBER_ADD_RM_FPRINTF(work_file_rm, filename_rm, "%d\n", *val);
-          n_removed_arr[*tid/2]++;
-          sums[*tid/2] += *val;
-          //printf("Remove: '%d'", *val);
+        for (int i = 0; i < *retval; i++) {
+          *retval = log2(*retval);
         }
-        free(retvals);*/
+        //sums[*tid/2] += *retval;
+        free(retval);
       }
     }
   }
 
+  return NULL;
 
 }
 
@@ -452,6 +506,17 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       break;
     }
 
+    case 'a': {
+      char *endptr;
+      item_amount = strtoul(arg, &endptr, 10);
+      if (endptr == arg) {
+        //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
+        fprintf (stderr, "OPT[ERROR]: 'a' Cannot convert string to number\n");
+        exit(-1);
+      }
+      printf("OPT: Amount of items to insert set to %s\n", arg);
+      break;
+    }
 
     case 150: {
       local_lb_threshold_percent = atof(arg);
@@ -709,6 +774,7 @@ int main(int argc, char** argv) {
 
   struct argp_option options[] = { 
     { "duration",                 'd', "<NUM> in seconds",0, "Sets duration of inserting items in seconds", 1},
+    { "amount",                   'a', "<NUM> in items",0, "Sets amount of items to insert", 1},
     { "queue-count",              'q', "<NUM>",           0, "Sets amount of queues on one node", 1},
     { "lb-thread",                'l', "true/false",      0, "Enables or disables dedicated load balancing thread (default false).", 2},
     { "hook",                     'h', NULL,      0, "Waits for gdb hook on pid. In gdb enter 'set var debug_wait=1' \
@@ -744,20 +810,18 @@ int main(int argc, char** argv) {
   atomic_init(&np, 0);
   atomic_init(&nc, 0);
 
-  pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
+  pthread_t *cb_threads = dq_init(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
     global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook, max_qsize);
 
   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
     pthread_join(cb_threads[i], NULL);
   }
-  lockfree_queue_destroy();
+  dq_destroy();
   pthread_barrier_destroy(&barrier);
-
 
   free(q_ins_ratios); free(q_rm_ratios);
   free(n_inserted_arr); free(n_removed_arr); free(sums);
-
 
   printf("Main finished\n");
   return 0;

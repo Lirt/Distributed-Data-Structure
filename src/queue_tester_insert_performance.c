@@ -186,15 +186,15 @@ void *work(void *arg_struct) {
             free(tp_rt_end);
             return NULL;
           }
-          //lockfree_queue_insert_item(rn);
-          lockfree_queue_insert_item_by_tid(qid, rn);
+          //dq_insert_item(rn);
+          dq_insert_item_by_tid(qid, rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
           free(rn);
           n_inserted_arr[*tid / 2]++;
         }
         else {
-          //lockfree_queue_insert_item(rn);
-          lockfree_queue_insert_item_by_tid(qid, rn);
+          //dq_insert_item(rn);
+          dq_insert_item_by_tid(qid, rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
           free(rn);
           n_inserted_arr[*tid / 2]++;
@@ -231,15 +231,15 @@ void *work(void *arg_struct) {
             free(tp_rt_end);
             return NULL;
           }
-          //lockfree_queue_insert_item(rn);
-          lockfree_queue_insert_item_by_tid(qid, rn);
+          //dq_insert_item(rn);
+          dq_insert_item_by_tid(qid, rn);
           free(rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
           n_inserted_arr[*tid / 2]++;
         }
         else {
-          //lockfree_queue_insert_item(rn);
-          lockfree_queue_insert_item_by_tid(qid, rn);
+          //dq_insert_item(rn);
+          dq_insert_item_by_tid(qid, rn);
           //lockfree_queue_insert_item_by_tid_no_lock(qid, rn);
           free(rn);
           n_inserted_arr[*tid / 2]++;
@@ -534,7 +534,7 @@ int main(int argc, char** argv) {
 
   struct argp_option options[] = { 
     { "duration",                 'd', "<NUM> in seconds",0, "Sets duration of inserting items in seconds", 1},
-    { "amount",                 'a', "<NUM> in items",0, "Sets amount of items to insert", 1},
+    { "amount",                   'a', "<NUM> in items",0, "Sets amount of items to insert", 1},
     { "queue-count",              'q', "<NUM>",           0, "Sets amount of queues on one node", 1},
     { "lb-thread",                'l', "true/false",      0, "Enables or disables dedicated load balancing thread", 2},
     { "hook",                     'h', NULL,      0, "Waits for gdb hook on pid. In gdb enter 'set var debug_wait=1' \
@@ -563,14 +563,14 @@ int main(int argc, char** argv) {
   atomic_init(&total_inserts, 0);
   atomic_init(&total_removes, 0);
 
-  pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int*), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
+  pthread_t *cb_threads = dq_init(work, NULL, sizeof(int*), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
     global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook, max_qsize );
 
   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
     pthread_join(cb_threads[i], NULL);
   }
-  lockfree_queue_destroy();
+  dq_destroy();
   printf("Main finished\n");
 
   return 0;

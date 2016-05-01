@@ -102,7 +102,7 @@ int comm_size, comm_rank, master_id;
 tid_hash_struct *tid_insertion_hashes = NULL;
 tid_hash_struct *tid_removal_hashes = NULL;
 
-struct ds_lockfree_queue **queues;
+struct dq_queue **queues;
 int queue_count = 0;
 int thread_count = 0;
 int thread_to_queue_ratio = 0;
@@ -197,8 +197,8 @@ load_balancer_strategy lbs;
 qsize_watcher_strategy qw_strategy;
 pthread_t listener_global_size_t;
 pthread_t listener_global_balance_t;
-pthread_mutex_t load_balance_global_mutex; //To lock thread until global operation as global_size or global_balance is done
-pthread_rwlock_t load_balance_global_rwlock; //To lock thread until global operation as global_size or global_balance is done
+pthread_mutex_t load_balance_global_mutex; //To lock thread until global operation as dq_global_size or dq_global_balance is done
+pthread_rwlock_t load_balance_global_rwlock; //To lock thread until global operation as dq_global_size or dq_global_balance is done
 pthread_cond_t load_balance_global_cond;
 pthread_rwlock_t global_size_rwlock;
 pthread_rwlock_t global_size_executing_rwlock;
@@ -223,7 +223,7 @@ int debug_wait = 0;
  * 
  **/
 
-int getInsertionTid() {
+int dq_get_insertion_tid() {
   /*
   * Returns thread id of insertion thread. 
   * If thread is not mapped, this function will create mapping in hash table
@@ -276,7 +276,7 @@ int getInsertionTid() {
   return ths->tid;
 }
 
-int getRemovalTid() {
+int dq_get_removal_tid() {
 
   /*
   * Returns thread id of removal thread. 
@@ -328,7 +328,7 @@ int getRemovalTid() {
 
 }
 
-void lockfree_queue_destroy() {
+void dq_destroy() {
    
  /*
   * Call only after all threads finished (pthread_joined)
@@ -370,7 +370,7 @@ void lockfree_queue_destroy() {
   #endif
   pthread_join(listener_global_size_t, NULL);
   pthread_join(listener_global_balance_t, NULL);
-  //pthread_join(local_struct_cleanup_t, NULL);
+  pthread_join(local_struct_cleanup_t, NULL);
 
   if (pthread_rwlock_destroy(&uthash_ins_rwlock) != 0) {
     fprintf(stderr, "lock destroy failed\n");
@@ -399,19 +399,19 @@ void lockfree_queue_destroy() {
     Global balance moved %lu items\n\t", 
     atomic_load(&load_balancer_call_count_watcher), atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), atomic_load(&global_size_call_count), atomic_load(&global_size_call_count_in_wait), atomic_load(&moved_items_log), atomic_load(&global_balance_executed_as_master_count), atomic_load(&global_balance_rejected_as_master_count), atomic_load(&moved_items_global_log));
 
-  //double sum_rt_time = sum_time(total_rt_lb_time_sec, total_rt_lb_time_nsec);
+  //double sum_rt_time = dq_util_sum_time(total_rt_lb_time_sec, total_rt_lb_time_nsec);
   /*LOG_INFO_TD("\tTotal realtime spent in load balancer: %lf seconds\
     \n\tTotal Thread time spent in load balancer: %lf seconds\n", sum_rt_time, sum_thr_time);*/
-  double sum_thr_time = sum_time(total_thr_lb_time_sec, total_thr_lb_time_nsec);
+  double sum_thr_time = dq_util_sum_time(total_thr_lb_time_sec, total_thr_lb_time_nsec);
   LOG_INFO_TD("\tTotal Thread time spent in load balancer: %lf seconds\n", sum_thr_time);
    
-  double sum_rt_time = sum_time(total_rt_global_size_time_sec, total_rt_global_size_time_nsec);
-  sum_thr_time = sum_time(total_thr_global_size_time_sec, total_thr_global_size_time_nsec);
+  double sum_rt_time = dq_util_sum_time(total_rt_global_size_time_sec, total_rt_global_size_time_nsec);
+  sum_thr_time = dq_util_sum_time(total_thr_global_size_time_sec, total_thr_global_size_time_nsec);
   LOG_INFO_TD("\tTotal realtime spent in global size: %lf seconds\
     \n\tTotal thread time spent in global size: %lf seconds\n", sum_rt_time, sum_thr_time);
 
-  sum_rt_time = sum_time(total_rt_global_balance_time_sec, total_rt_global_balance_time_nsec);
-  sum_thr_time = sum_time(total_thr_global_balance_time_sec, total_thr_global_balance_time_sec);
+  sum_rt_time = dq_util_sum_time(total_rt_global_balance_time_sec, total_rt_global_balance_time_nsec);
+  sum_thr_time = dq_util_sum_time(total_thr_global_balance_time_sec, total_thr_global_balance_time_sec);
   LOG_INFO_TD("\tTotal realtime spent in global balance: %lf seconds\
     \n\tTotal thread time spent in global balance: %lf seconds\n", sum_rt_time, sum_thr_time);
 
@@ -422,8 +422,8 @@ void lockfree_queue_destroy() {
   free(callback_threads);
 
   for (int i = 0; i < queue_count; i++) {
-    struct ds_lockfree_queue *q = queues[ i ];
-    struct lockfree_queue_item *tmp;
+    struct dq_queue *q = queues[ i ];
+    struct dq_item *tmp;
     while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
@@ -468,11 +468,11 @@ void lockfree_queue_destroy() {
 }
 
 
-bool lockfree_queue_is_empty_local(void *queue_id) {
+bool dq_is_queue_empty(void *queue_id) {
    
    long *tid = queue_id; 
    
-   struct ds_lockfree_queue *q = queues[ *tid ];
+   struct dq_queue *q = queues[ *tid ];
 
    if ( atomic_load( &(q->a_qsize) ) == 0 ) {
       return true;
@@ -483,7 +483,7 @@ bool lockfree_queue_is_empty_local(void *queue_id) {
 }
 
 
-bool lockfree_queue_is_empty_all_local () {
+bool dq_is_local_ds_empty () {
 
    for (int i = 0 ; i < queue_count; i++) {
       if ( atomic_load( &(queues[i]->a_qsize) ) != 0 ) {
@@ -495,7 +495,7 @@ bool lockfree_queue_is_empty_all_local () {
    
 }
 
-bool lockfree_queue_is_empty_all_consistent_local() {
+bool dq_is_local_ds_empty_consistent() {
 
    bool retval = true; 
 
@@ -513,7 +513,7 @@ bool lockfree_queue_is_empty_all_consistent_local() {
    
 }
 
-pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* arguments, size_t item_size_arg,
+pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item_size_arg,
   unsigned int queue_count_arg, unsigned int thread_count_arg, 
   bool qw_thread_enable_arg, double local_lb_threshold_percent, double global_lb_threshold_percent, 
   unsigned long local_lb_threshold_static, unsigned long global_lb_threshold_static, unsigned int threshold_type_arg, 
@@ -588,7 +588,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   fprintf(file_pid, "%d", pid_int);
   fclose(file_pid);
 
-  char filename_log_global_comm[60] = "/tmp/distributed_queue/log_debug_global_siz_er";
+  char filename_log_global_comm[60] = "/tmp/distributed_queue/log_debug_global_size";
   strcat(filename_log_global_comm, pid_str);
   log_file_global_comm = fopen(filename_log_global_comm, "wb");
   if (log_file_global_comm == NULL) {
@@ -681,8 +681,6 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
    * Queue initialization
    */
 
-  LOG_INFO_TD("CPU_COUNT: %d\nQUEUE_COUNT: %d\n", get_nprocs(), queue_count);
-
   unsigned long max_qsize_tmp;
   if ( max_qsize == 0 ) {
     max_qsize_tmp = ULONG_MAX;  //If max_qsize == 0, queue has infinite size --> ULONG_MAX
@@ -701,13 +699,15 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   else 
     queue_count = queue_count_arg;
 
-  queues = (struct ds_lockfree_queue**) malloc ( queue_count * sizeof(struct ds_lockfree_queue) );
+  LOG_INFO_TD("CPU_COUNT: %d\nQUEUE_COUNT: %d\n", get_nprocs(), queue_count);
+
+  queues = (struct dq_queue**) malloc ( queue_count * sizeof(struct dq_queue) );
   for (int i = 0; i < queue_count; i++) {
-    queues[i] = (struct ds_lockfree_queue*) malloc ( sizeof(struct ds_lockfree_queue) );
+    queues[i] = (struct dq_queue*) malloc ( sizeof(struct dq_queue) );
   }
 
   for (int i = 0; i < queue_count; i++) {
-    queues[i]->head = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+    queues[i]->head = (struct dq_item*) malloc (sizeof(struct dq_item));
     queues[i]->head->val = malloc(sizeof(void*));
     queues[i]->head->next = NULL;
     queues[i]->tail = queues[i]->head;
@@ -790,7 +790,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
 
   global_balancing_enable = true; //enables or disables global balancing
   if (global_balancing_enable) {
-    rc = pthread_create(&listener_global_balance_t, &attr, comm_listener_global_balance, NULL);
+    rc = pthread_create(&listener_global_balance_t, &attr, dq_comm_listener_global_balance, NULL);
     if (rc) {
       fprintf(stderr, "ERROR: (init) return code from pthread_create() on global balance listener is %d\n", rc);
       LOG_ERR_T( (long) -1, "Pthread create failed\n");
@@ -802,7 +802,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
    * Global size listener
    */
 
-  rc = pthread_create(&listener_global_size_t, &attr, comm_listener_global_size, NULL);
+  rc = pthread_create(&listener_global_size_t, &attr, dq_comm_listener_global_size, NULL);
   if (rc) {
     LOG_ERR_T( (long) -1, "Pthread create failed\n");
     exit(-1);
@@ -838,19 +838,19 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
   * LOAD BALANCE TYPE
   */
 
-  lbs = &load_balancer_all_balance; //Default LB strategy(necessary for f.remove item)
+  lbs = &dq_load_balancer_all; //Default LB strategy(necessary for f.remove item)
   if ( local_balance_type_arg == 1 ) {
     //LB ALL EQUAL
     qsize_wait_time = 7000; //in microseconds
-    qw_strategy = &qsize_watcher_local_threshold_strategy;
-    lbs = &load_balancer_all_balance;
+    qw_strategy = &dq_qsize_watcher_local_threshold;
+    lbs = &dq_load_balancer_all;
     LOG_INFO_TD("Load balancer strategy is equal balance\n");
   }
   else if ( local_balance_type_arg == 2 ) {
     //LB PAIR
     qsize_wait_time = 4000; //in microseconds
-    qw_strategy = &qsize_watcher_min_max_strategy;
-    lbs = &load_balancer_pair_balance;
+    qw_strategy = &dq_qsize_watcher_min_max;
+    lbs = &dq_load_balancer_pair;
     LOG_INFO_TD("Load balancer strategy is pair balance\n");
   }
   /*else {
@@ -913,22 +913,21 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
    */
 
   #ifdef COUNTERS
-    rc = pthread_create(&per_time_statistics_reseter_t, &attr, per_time_statistics_reseter, NULL);
+    rc = pthread_create(&per_time_statistics_reseter_t, &attr, dq_per_time_statistics_reseter, NULL);
     if (rc) {
-      //fprintf(stderr, "ERROR: (init per_time_statistics_reseter) return code from pthread_create() is %d\n", rc);
+      //fprintf(stderr, "ERROR: (init dq_per_time_statistics_reseter) return code from pthread_create() is %d\n", rc);
       LOG_ERR_T( (long) -1, "Pthread create failed\n");
       exit(-1);
     }
   #endif
 
-  /*
-  rc = pthread_create(&local_struct_cleanup_t, &attr, local_struct_cleanup, NULL);
+  
+  rc = pthread_create(&local_struct_cleanup_t, &attr, dq_local_struct_cleanup, NULL);
   if (rc) {
     //fprintf(stderr, "ERROR: (init cleanup thread) return code from pthread_create() is %d\n", rc);
     LOG_ERR_T( (long) -1, "Pthread create failed\n");
     exit(-1);
   }
-  */
 
   /*
    * Settings for queue argument structure and thread mapping to queues
@@ -956,7 +955,7 @@ pthread_t* lockfree_queue_init_callback ( void* (*callback)(void *args), void* a
 
 }
 
-void lockfree_queue_free(void *queue_id) {
+void dq_queue_free(void *queue_id) {
    
   /*
    * Frees queue indexed by q_id
@@ -966,10 +965,10 @@ void lockfree_queue_free(void *queue_id) {
 
   long *q_id = queue_id;
 
-  struct ds_lockfree_queue *q = queues[ *q_id ]; //modulo ok?
+  struct dq_queue *q = queues[ *q_id ]; //modulo ok?
 
-  struct lockfree_queue_item *item;
-  struct lockfree_queue_item *item_tmp;
+  struct dq_item *item;
+  struct dq_item *item_tmp;
 
   item = q->head;
   while (item != NULL) {
@@ -983,23 +982,23 @@ void lockfree_queue_free(void *queue_id) {
    
 }
 
-int lockfree_queue_insert_item (void* val) {
+int dq_insert_item (void* val) {
 
  /*
   * Free is done in function
   * User must free only his value *val
   */
 
-  long tid = getInsertionTid();
-  struct ds_lockfree_queue *q = queues[ tid ];
+  long tid = dq_get_insertion_tid();
+  struct dq_queue *q = queues[ tid ];
 
-  struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+  struct dq_item *item = (struct dq_item*) malloc (sizeof(struct dq_item));
   if (item == NULL) {
     fprintf(stdout, "ERROR: Malloc failed\n");
     LOG_ERR_T( (long) tid, "Malloc failed\n");
     return -1;
   }
-  struct lockfree_queue_item *tmp;
+  struct dq_item *tmp;
 
   item->val = malloc(sizeof(void*));
   if (item->val == NULL) {
@@ -1011,7 +1010,8 @@ int lockfree_queue_insert_item (void* val) {
 
   item->next = NULL;
 
-  while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  //while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  while ( q->a_qsize >= q->max_size ) {
     usleep(100);
   }
 
@@ -1043,66 +1043,21 @@ int lockfree_queue_insert_item (void* val) {
 
 void lockfree_queue_insert_item_no_lock (void* val) {
 
-   long tid = getInsertionTid();
-   struct ds_lockfree_queue *q = queues[ tid ];
+  long tid = dq_get_insertion_tid();
+  struct dq_queue *q = queues[ tid ];
 
-   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-   if (item == NULL) {
-      LOG_ERR_T( (long) tid, "Malloc failed\n");
-   }
-   struct lockfree_queue_item *tmp;
-   //item->val = val;
-   item->val = malloc(sizeof(void*));
-   memcpy(item->val, val, q->item_size);
-   item->next = NULL;
-   
-  while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
-    usleep(100);
-  }
-
-   //set next and swap pointer to tail
-   q->tail->next = item;
-   
-   //q-tail setting is critical section
-   q->tail = q->tail->next;
-   
-   //increment Q size
-   atomic_fetch_add( &(q->a_qsize), 1);
-   #ifdef COUNTERS
-    atomic_fetch_add( &ins_count, 1);
-   #endif
-
-   //cleanup
-   while ( q->head != q->divider ) {
-      tmp = q->head;
-      q->head = q->head->next;
-      free(tmp->val);
-      free(tmp);
-   }
-
-}
-
-void lockfree_queue_insert_item_by_tid (void *t, void* val) {
-
-  long *tid = t;
-  struct ds_lockfree_queue *q = queues[ *tid ];
-
-  struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
-
+  struct dq_item *item = (struct dq_item*) malloc (sizeof(struct dq_item));
   if (item == NULL) {
     LOG_ERR_T( (long) tid, "Malloc failed\n");
   }
-
-  struct lockfree_queue_item *tmp;
+  struct dq_item *tmp;
   //item->val = val;
-  item->val = malloc(sizeof(q->item_size));
+  item->val = malloc(sizeof(void*));
   memcpy(item->val, val, q->item_size);
-  //item->val = malloc(sizeof(void*));
-  //memcpy(item->val, val, sizeof(void*));
   item->next = NULL;
-  pthread_mutex_lock(&add_mutexes[*tid]);
-
-  while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+   
+  //while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  while ( q->a_qsize >= q->max_size ) {
     usleep(100);
   }
 
@@ -1126,26 +1081,71 @@ void lockfree_queue_insert_item_by_tid (void *t, void* val) {
     free(tmp);
   }
 
+}
+
+void dq_insert_item_by_tid (void *t, void* val) {
+
+  long *tid = t;
+  struct dq_queue *q = queues[ *tid ];
+
+  struct dq_item *item = (struct dq_item*) malloc (sizeof(struct dq_item));
+
+  if (item == NULL) {
+    LOG_ERR_T( (long) tid, "Malloc failed\n");
+  }
+
+  struct dq_item *tmp;
+  item->val = malloc(sizeof(q->item_size));
+  memcpy(item->val, val, q->item_size);
+  item->next = NULL;
+  pthread_mutex_lock(&add_mutexes[*tid]);
+
+  //while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  while ( q->a_qsize >= q->max_size ) {
+    usleep(50);
+  }
+
+  //set next and swap pointer to tail
+  q->tail->next = item;
+
+  //q-tail setting is critical section
+  q->tail = q->tail->next;
+
+  //increment Q size
+  atomic_fetch_add( &(q->a_qsize), 1);
+  #ifdef COUNTERS
+    atomic_fetch_add( &ins_count, 1);
+  #endif
+
+  //cleanup
+  while ( q->head != q->divider ) {
+    tmp = q->head;
+    q->head = q->head->next;
+    free(tmp->val);
+    free(tmp);
+  }
+
   pthread_mutex_unlock(&add_mutexes[*tid]);
 }
 
-void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
+void dq_insert_item_by_tid_no_lock (void *t, void* val) {
 
    long *tid = t;
-   struct ds_lockfree_queue *q = queues[ *tid ];
+   struct dq_queue *q = queues[ *tid ];
 
-   struct lockfree_queue_item *item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+   struct dq_item *item = (struct dq_item*) malloc (sizeof(struct dq_item));
    
    if (item == NULL) {
       LOG_ERR_T( (long) tid, "Malloc failed\n");
    }
-   struct lockfree_queue_item *tmp;
+   struct dq_item *tmp;
    //item->val = val;
    item->val = malloc(sizeof(void*));
    memcpy(item->val, val, q->item_size);
    item->next = NULL;
    
-  while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  //while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  while ( q->a_qsize >= q->max_size ) {
     usleep(100);
   }
 
@@ -1173,7 +1173,7 @@ void lockfree_queue_insert_item_by_tid_no_lock (void *t, void* val) {
 
 void lockfree_queue_insert_N_items (void** values, int item_count) {
 
-   long tid = getInsertionTid();
+   long tid = dq_get_insertion_tid();
 
    if ( item_count == 0 ) {
       return;
@@ -1182,13 +1182,13 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
       return;
    }
 
-   struct ds_lockfree_queue *q = queues[ tid ];
+   struct dq_queue *q = queues[ tid ];
 
-   struct lockfree_queue_item *item;
-   struct lockfree_queue_item *item_tmp;
-   struct lockfree_queue_item *item_first;
+   struct dq_item *item;
+   struct dq_item *item_tmp;
+   struct dq_item *item_first;
 
-   item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+   item = (struct dq_item*) malloc (sizeof(struct dq_item));
    
    if (item == NULL) {
       LOG_ERR_T( (long) tid, "Malloc failed\n");
@@ -1201,7 +1201,7 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
    item_first = item;
 
    for (int i = 1; i < item_count; i++) {
-      item_tmp = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+      item_tmp = (struct dq_item*) malloc (sizeof(struct dq_item));
       if (item_tmp == NULL) {
          LOG_ERR_T( (long) tid, "Malloc failed\n");
          return;
@@ -1219,7 +1219,7 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
    item->next = NULL;
    
   //while ( (atomic_load(&(q->a_qsize)) + item_count) >= q->max_size ) {
-  while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  while ( q->a_qsize >= q->max_size ) {
     usleep(100);
   }
 
@@ -1238,7 +1238,7 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
   #endif
 
    //cleanup   
-   struct lockfree_queue_item *tmp;
+   struct dq_item *tmp;
    while ( q->head != q->divider ) {
       tmp = q->head;
       q->head = q->head->next;
@@ -1250,7 +1250,7 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
    
 }
 
-void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count, void *qid) {
+void dq_insert_N_items_no_lock_by_tid (void** values, int item_count, void *qid) {
 
   if ( item_count == 0 ) {
     return;
@@ -1260,13 +1260,13 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
   }
 
   long *tid = qid;
-  struct ds_lockfree_queue *q = queues[ *tid ];
+  struct dq_queue *q = queues[ *tid ];
 
-  struct lockfree_queue_item *item;
-  struct lockfree_queue_item *item_tmp;
-  struct lockfree_queue_item *item_first;
+  struct dq_item *item;
+  struct dq_item *item_tmp;
+  struct dq_item *item_first;
 
-  item = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+  item = (struct dq_item*) malloc (sizeof(struct dq_item));
 
   if (item == NULL) {
     fprintf(stdout, "ERROR: Malloc failed in insert_N_items_no_lock_by_tid\n");
@@ -1279,7 +1279,7 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
   item_first = item;
 
   for (int i = 1; i < item_count; i++) {
-    item_tmp = (struct lockfree_queue_item*) malloc (sizeof(struct lockfree_queue_item));
+    item_tmp = (struct dq_item*) malloc (sizeof(struct dq_item));
     if (item_tmp == NULL) {
       LOG_ERR_T( (long) tid, "Malloc failed\n");
       return;
@@ -1295,9 +1295,9 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
   }
   item->next = NULL;
 
-  while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
+  /*while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
     usleep(100);
-  }
+  }*/
 
   //set next
   q->tail->next = item_first;
@@ -1306,13 +1306,14 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
   q->tail = item;
 
   //increment Q size
+
   atomic_fetch_add( &(q->a_qsize), item_count);
   #ifdef COUNTERS
     atomic_fetch_add(&ins_count, item_count);
   #endif
 
   //cleanup   
-  struct lockfree_queue_item *tmp;
+  struct dq_item *tmp;
   while ( q->head != q->divider ) {
     tmp = q->head;
     q->head = q->head->next;
@@ -1322,7 +1323,7 @@ void lockfree_queue_insert_N_items_no_lock_by_tid (void** values, int item_count
    
 }
 
-int load_balancer_pair_balance(void* lb_struct_arg) {
+int dq_load_balancer_pair(void* lb_struct_arg) {
 
   struct load_balancer_struct *lb_struct = lb_struct_arg;
 
@@ -1348,7 +1349,7 @@ int load_balancer_pair_balance(void* lb_struct_arg) {
   }
   clock_gettime(CLOCK_REALTIME, last_local_rebalance_time);
 
-  long maxdiff_q_id = maxdiff_q(&(lb_struct->src_q));
+  long maxdiff_q_id = dq_util_maxdiff_q(&(lb_struct->src_q));
   if ( maxdiff_q_id == -1 ) {
     //No local queue to trade with
     free(current_time);
@@ -1366,19 +1367,19 @@ int load_balancer_pair_balance(void* lb_struct_arg) {
   pthread_mutex_lock(&add_mutexes[maxdiff_q_id]);
   pthread_mutex_lock(&add_mutexes[lb_struct->src_q]);
 
-  unsigned long qsize_src = lockfree_queue_size_by_tid(&maxdiff_q_id);
-  unsigned long qsize_dst = lockfree_queue_size_by_tid(&(lb_struct->src_q));
+  unsigned long qsize_src = dq_queue_size_by_tid(&maxdiff_q_id);
+  unsigned long qsize_dst = dq_queue_size_by_tid(&(lb_struct->src_q));
 
   unsigned long estimated_size = (qsize_src + qsize_dst) / 2;
   unsigned long items_to_send;
 
   if ( qsize_src > qsize_dst ) {
     items_to_send = qsize_src - estimated_size;
-    lockfree_queue_move_items(maxdiff_q_id, lb_struct->src_q, items_to_send);
+    dq_move_items(maxdiff_q_id, lb_struct->src_q, items_to_send);
   }
   else if ( qsize_src < qsize_dst ) {
     items_to_send = qsize_dst - estimated_size;
-    lockfree_queue_move_items(lb_struct->src_q, maxdiff_q_id, items_to_send);
+    dq_move_items(lb_struct->src_q, maxdiff_q_id, items_to_send);
   }
   LOAD_BALANCE_LOG_DEBUG_TD("Balancing Queue[%ld] with %ld items with Queue[%ld] with %ld items -- sending %ld items\n", 
     lb_struct->src_q, qsize_src, maxdiff_q_id, qsize_dst, items_to_send);
@@ -1386,8 +1387,8 @@ int load_balancer_pair_balance(void* lb_struct_arg) {
   if ( lb_struct->qsize_history != NULL ) {
     unsigned long* qsize_history = lb_struct->qsize_history;
     for (int j = 0; j < queue_count; j++) {
-      LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], lockfree_queue_size_by_tid(tids[j]));
-      qsize_history[j] = lockfree_queue_size_by_tid(tids[j]);;
+      LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], dq_queue_size_by_tid(tids[j]));
+      qsize_history[j] = dq_queue_size_by_tid(tids[j]);;
     }
   }
 
@@ -1416,7 +1417,7 @@ int load_balancer_pair_balance(void* lb_struct_arg) {
 
 }
 
-int load_balancer_all_balance(void* arg) {
+int dq_load_balancer_all(void* arg) {
 
  /*
   * Counts estimated size
@@ -1475,7 +1476,7 @@ int load_balancer_all_balance(void* arg) {
 
   //Do not use function lockfree_queue_size_total_consistent(), because mutexes are already locked. 
   unsigned long items_to_send;
-  unsigned long total = lockfree_queue_size_total();
+  unsigned long total = dq_local_size();
   unsigned long estimated_size = total / queue_count;
 
   int *indexes = (int*) malloc ( 2 * sizeof(int));
@@ -1492,25 +1493,25 @@ int load_balancer_all_balance(void* arg) {
   if ( estimated_size == 0 ) {
     LOAD_BALANCE_LOG_DEBUG_TD("Estimated size = 0\n");
     for (int j = 0; j < queue_count; j++) {
-      q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
+      q_sizes[j] = dq_queue_size_by_tid(tids[j]);
       LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
     }
-    find_max_min_element_index(q_sizes, queue_count, indexes);
+    dq_util_find_max_min_element_index(q_sizes, queue_count, indexes);
     LOAD_BALANCE_LOG_DEBUG_TD("Max: Q%d with %lu --- Min: Q%d with %lu  ---  Sending: 1 item\n", indexes[0], q_sizes[indexes[0]], 
       indexes[1], q_sizes[indexes[1]]);
     if ( indexes[0] != lb_struct->src_q ) {
-      lockfree_queue_move_items(indexes[0], (int) lb_struct->src_q, (unsigned long) 1);
+      dq_move_items(indexes[0], (int) lb_struct->src_q, (unsigned long) 1);
     }
   }
   else {
     for (int i = 0 ; i < queue_count - 1; i++) {
       LOAD_BALANCE_LOG_DEBUG_TD("Load balance round %d\n", i);
       for (int j = 0; j < queue_count; j++) {
-        q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
+        q_sizes[j] = dq_queue_size_by_tid(tids[j]);
         LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
       }
       
-      find_max_min_element_index(q_sizes, queue_count, indexes);
+      dq_util_find_max_min_element_index(q_sizes, queue_count, indexes);
 
       if ( (q_sizes[indexes[0]] - (abs(q_sizes[indexes[1]] - estimated_size))) >= estimated_size )
          items_to_send = abs(q_sizes[indexes[1]] - estimated_size);
@@ -1524,14 +1525,14 @@ int load_balancer_all_balance(void* arg) {
        * remove N items from queue queues[indexes[0]] (queue with more items)
        * add N items to queue queues[indexes[1]]]
        */
-      lockfree_queue_move_items(indexes[0], indexes[1], items_to_send);
+      dq_move_items(indexes[0], indexes[1], items_to_send);
     }
   }
 
   if ( lb_struct->qsize_history != NULL ) {
     unsigned long* qsize_history = lb_struct->qsize_history;
     for (int j = 0; j < queue_count; j++) {
-      q_sizes[j] = lockfree_queue_size_by_tid(tids[j]);
+      q_sizes[j] = dq_queue_size_by_tid(tids[j]);
       LOAD_BALANCE_LOG_DEBUG_TD("Queue %ld size is %lu\n", *tids[j], q_sizes[j]);
       qsize_history[j] = q_sizes[j];
     }
@@ -1563,7 +1564,7 @@ int load_balancer_all_balance(void* arg) {
 
 }
 
-void lockfree_queue_move_items(int q_id_src, int q_id_dest, unsigned long count) {
+void dq_move_items(int q_id_src, int q_id_dest, unsigned long count) {
 
  /*
   * Does not lock queues
@@ -1573,13 +1574,13 @@ void lockfree_queue_move_items(int q_id_src, int q_id_dest, unsigned long count)
     return;
   }
 
-  struct ds_lockfree_queue *q_src = queues[ q_id_src ];
-  struct ds_lockfree_queue *q_dst = queues[ q_id_dest ];
+  struct dq_queue *q_src = queues[ q_id_src ];
+  struct dq_queue *q_dst = queues[ q_id_dest ];
 
   unsigned long q_size_src = atomic_load( &(q_src->a_qsize) );
 
-  struct lockfree_queue_item *tmp_div;
-  struct lockfree_queue_item *tmp_div_next;
+  struct dq_item *tmp_div;
+  struct dq_item *tmp_div_next;
   tmp_div_next = q_src->divider->next;
   tmp_div = q_src->divider;
 
@@ -1611,7 +1612,7 @@ void lockfree_queue_move_items(int q_id_src, int q_id_dest, unsigned long count)
 
 }
 
-void *qsize_watcher_min_max_strategy() {
+void *dq_qsize_watcher_min_max() {
 
   bool balance_flag;
   unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
@@ -1640,7 +1641,7 @@ void *qsize_watcher_min_max_strategy() {
     }
 
     for (int i = 0; i < queue_count; i++) {
-      q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
+      q_sizes[i] = dq_queue_size_by_tid(tids[i]);
       total_qsize += q_sizes[i];
     }
     
@@ -1738,7 +1739,7 @@ void *qsize_watcher_min_max_strategy() {
 
 }
 
-void* qsize_watcher_local_threshold_strategy() {
+void* dq_qsize_watcher_local_threshold() {
    
   bool balance_flag;
   unsigned long *q_sizes = (unsigned long*) malloc (queue_count * sizeof(unsigned long));
@@ -1766,7 +1767,7 @@ void* qsize_watcher_local_threshold_strategy() {
     }
 
     for (int i = 0; i < queue_count; i++) {
-      q_sizes[i] = lockfree_queue_size_by_tid(tids[i]);
+      q_sizes[i] = dq_queue_size_by_tid(tids[i]);
       total_qsize += q_sizes[i];
     }
     QSIZE_WATCHER_LOG_DEBUG_TD("Total qsize = %ld\n", total_qsize);
@@ -1876,9 +1877,9 @@ int lockfree_queue_remove_item (void* buffer) {
   */
 
   void* val = NULL;
-  long tid = getRemovalTid();
+  long tid = dq_get_removal_tid();
    
-  struct ds_lockfree_queue *q = queues[ tid ];
+  struct dq_queue *q = queues[ tid ];
    
   pthread_mutex_lock(&rm_mutexes[tid]);
    
@@ -1898,10 +1899,10 @@ int lockfree_queue_remove_item (void* buffer) {
         break;
       }
 
-      if ( lockfree_queue_size_total() == 0 ) {
+      if ( dq_local_size() == 0 ) {
         pthread_mutex_unlock(&rm_mutexes[tid]);
-        if ( global_size(false) != 0 ) {
-          global_balance(tid);
+        if ( dq_global_size(false) != 0 ) {
+          dq_global_balance(tid);
           continue;
         }
         else {
@@ -1918,6 +1919,7 @@ int lockfree_queue_remove_item (void* buffer) {
           free(lb_struct);
         }
         else {
+          free(lb_struct);
           pthread_mutex_unlock(&rm_mutexes[tid]);
           usleep(10);
         }
@@ -1943,12 +1945,16 @@ int lockfree_queue_remove_item (void* buffer) {
    
 }
 
-int lockfree_queue_remove_item_by_tid (void* t, void* buffer) {
+int dq_remove_item_by_tid (void* t, void* buffer) {
 
   void* val = NULL;
   long* tid = t;
 
-  struct ds_lockfree_queue *q = queues[ *tid ]; 
+  struct dq_queue *q = queues[ *tid ]; 
+
+  if ( q->a_qsize == 0 ) {
+    usleep(50);
+  }
 
   pthread_mutex_lock(&rm_mutexes[*tid]);
 
@@ -1968,10 +1974,10 @@ int lockfree_queue_remove_item_by_tid (void* t, void* buffer) {
         break;
       }
 
-      if ( lockfree_queue_size_total() == 0 ) {
+      if ( dq_local_size() == 0 ) {
         pthread_mutex_unlock(&rm_mutexes[*tid]);
-        if ( global_size(false) != 0 ) {
-          global_balance(*tid);
+        if ( dq_global_size(false) != 0 ) {
+          dq_global_balance(*tid);
           continue;
         }
         else {
@@ -2019,9 +2025,9 @@ int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
   * N is amount of items to be taken from Q
   */
 
-  long tid = getRemovalTid();
+  long tid = dq_get_removal_tid();
    
-  struct ds_lockfree_queue *q = queues[ tid ];
+  struct dq_queue *q = queues[ tid ];
    
   pthread_mutex_lock(&rm_mutexes[tid]);
   
@@ -2058,9 +2064,9 @@ int lockfree_queue_remove_Nitems (unsigned long N, void** buffer) {
    
 }
 
-int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** buffer) {
+int dq_remove_Nitems_by_tid_no_lock(long qid, long item_cnt, void** buffer) {
    
-  struct ds_lockfree_queue *q = queues[ qid ];
+  struct dq_queue *q = queues[ qid ];
 
   unsigned long qsize = atomic_load( &(q->a_qsize) );
   if ( qsize < item_cnt ) {
@@ -2092,13 +2098,13 @@ int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** 
 
 }
 
-unsigned long global_size(bool consistency) {
+unsigned long dq_global_size(bool consistency) {
    
   /*****
   * send message 'init_global_size'(900) to master
   * all nodes must listen to master 'stop_work' message(901)... so they listens (at least) to master
   * master listens to messages from compute nodes in separate thread
-  * on message global_size master stops all compute nodes -> send message to go to barrier
+  * on message dq_global_size master stops all compute nodes -> send message to go to barrier
   * after this message, all threads must go to method MPI_Barrier(comm) or global comm_size thread must lock all queues ?
   * after stop, thread sends their queue structure comm_size to master(902)
   * master counts the sum and returns it to user(903)
@@ -2106,7 +2112,7 @@ unsigned long global_size(bool consistency) {
   */
 
   if (comm_size <= 1) {
-    return lockfree_queue_size_total();
+    return dq_local_size();
   }
 
   if ( pthread_rwlock_trywrlock(&global_size_rwlock) != 0 ) {
@@ -2181,7 +2187,7 @@ unsigned long global_size(bool consistency) {
    
 }
 
-void* comm_listener_global_size() {
+void* dq_comm_listener_global_size() {
 
   MPI_Request *requests_901 = (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));
   MPI_Request *requests_902 = (MPI_Request*) malloc( (comm_size - 1) * sizeof(MPI_Request));
@@ -2251,7 +2257,7 @@ void* comm_listener_global_size() {
       if ( consistency_type_src_id[0] == 0 ) {
         //Get inconsistent global size
 
-        unsigned long master_struct_size = lockfree_queue_size_total();
+        unsigned long master_struct_size = dq_local_size();
         for (int i = 0; i < comm_size; i++) {
           if (i != comm_rank) {
             MPI_Irecv(&node_sizes[i], 1, MPI_UNSIGNED_LONG, i, 902, MPI_COMM_WORLD, &requests_902[cnt]);
@@ -2283,7 +2289,7 @@ void* comm_listener_global_size() {
         LOCK_LOAD_BALANCER();
         LOCK_LOCAL_QUEUES();
 
-        unsigned long master_struct_size = lockfree_queue_size_total();
+        unsigned long master_struct_size = dq_local_size();
         for (int i = 0; i < comm_size; i++) {
           if (i != comm_rank) {
             MPI_Irecv(&node_sizes[i], 1, MPI_UNSIGNED_LONG, i, 902, MPI_COMM_WORLD, &requests_902[cnt]);
@@ -2351,7 +2357,7 @@ void* comm_listener_global_size() {
       GLOBAL_COMM_LOG_DEBUG_TD(comm_rank, "COMPUTE NODE: Received 901 - consistency %d, src_node %d\n", consistency_type_src_id[0], consistency_type_src_id[1]);
       if ( consistency_type_src_id[0] == 0 ) {
 
-        unsigned long local_size = lockfree_queue_size_total();
+        unsigned long local_size = dq_local_size();
         MPI_Send(&local_size, 1, MPI_UNSIGNED_LONG, master_id, 902, MPI_COMM_WORLD);
 
         if ( consistency_type_src_id[1] != comm_rank ) {
@@ -2363,7 +2369,7 @@ void* comm_listener_global_size() {
         LOCK_LOAD_BALANCER();
         LOCK_LOCAL_QUEUES();
 
-        unsigned long local_size = lockfree_queue_size_total();
+        unsigned long local_size = dq_local_size();
         MPI_Send(&local_size, 1, MPI_UNSIGNED_LONG, master_id, 902, MPI_COMM_WORLD);
 
         if ( consistency_type_src_id[1] != comm_rank ) {
@@ -2384,7 +2390,7 @@ void* comm_listener_global_size() {
 
 }
 
-int global_balance(long tid) {
+int dq_global_balance(long tid) {
 
   if (comm_size <= 1) {
     return 0;
@@ -2477,7 +2483,7 @@ int global_balance(long tid) {
 
 }
 
-void* comm_listener_global_balance() {
+void* dq_comm_listener_global_balance() {
 
  /*
   * Send message that local structure is empty(800) to master.
@@ -2567,7 +2573,7 @@ void* comm_listener_global_balance() {
           cnt++;
         }
         else {
-          node_sizes[i] = lockfree_queue_size_total();
+          node_sizes[i] = dq_local_size();
         }
       }
       MPI_Waitall(comm_size - 1, requests, statuses);
@@ -2575,49 +2581,40 @@ void* comm_listener_global_balance() {
 
       //COUNT RELOCATION
       unsigned long items_to_send;
-      unsigned long estimated_size = sum_arr(node_sizes, comm_size) / comm_size;
+      unsigned long estimated_size = dq_util_sum_arr(node_sizes, comm_size) / comm_size;
       work_to_send *wts = (work_to_send*) malloc(comm_size * sizeof(work_to_send));
 
       for (int i = 0 ; i < comm_size; i++) {
         wts[i].send_count = 0;
         wts[i].dst_node_ids = NULL;
         wts[i].item_counts = NULL;
-        //wts[i].dst_node_ids = (long*) malloc(sizeof(long));
-        //wts[i].item_counts = (unsigned long*) malloc(sizeof(unsigned long));
-        //wts[indexes[0]].dst_node_ids = (long*) malloc(wts[indexes[0]].send_count * sizeof(long));
-        //wts[indexes[0]].item_counts = (unsigned long*) malloc(wts[indexes[0]].send_count * sizeof(unsigned long));
         GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Node[%d] size is %ld\n", i, node_sizes[i]);
       }
 
       int *indexes = (int*) malloc ( 2 * sizeof(int));
       for (int i = 0 ; i < comm_size - 1; i++) {
-        GLOBAL_BALANCE_LOG_DEBUG_TD("Global Load balance round %d\n", i);
+        GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Global Load balance round %d\n", i);
         
-        find_max_min_element_index(node_sizes, comm_size, indexes);
+        dq_util_find_max_min_element_index(node_sizes, comm_size, indexes);
 
         if ( (node_sizes[indexes[0]] - (abs(node_sizes[indexes[1]] - estimated_size))) >= estimated_size )
            items_to_send = abs(node_sizes[indexes[1]] - estimated_size);
         else
            items_to_send = node_sizes[indexes[0]] - estimated_size;
 
-        GLOBAL_BALANCE_LOG_DEBUG_TD("Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], 
+        GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], 
           node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
         
-        node_sizes[indexes[0]] -= items_to_send;
-        node_sizes[indexes[1]] += items_to_send;
-
         if (indexes[0] == indexes[1]) {
           continue;
         }
 
+        node_sizes[indexes[0]] -= items_to_send;
+        node_sizes[indexes[1]] += items_to_send;
+
         wts[indexes[0]].send_count += 1;
-        /*if ( wts[indexes[0]].send_count == 1 ) {
-          ;
-        }
-        else {*/
-          wts[indexes[0]].dst_node_ids = (long*) realloc(wts[indexes[0]].dst_node_ids, wts[indexes[0]].send_count * sizeof(long));          
-          wts[indexes[0]].item_counts = (unsigned long*) realloc(wts[indexes[0]].item_counts, wts[indexes[0]].send_count * sizeof(unsigned long));
-        //}
+        wts[indexes[0]].dst_node_ids = (long*) realloc(wts[indexes[0]].dst_node_ids, wts[indexes[0]].send_count * sizeof(long));          
+        wts[indexes[0]].item_counts = (unsigned long*) realloc(wts[indexes[0]].item_counts, wts[indexes[0]].send_count * sizeof(unsigned long));
         wts[indexes[0]].dst_node_ids[wts[indexes[0]].send_count - 1] = indexes[1];
         wts[indexes[0]].item_counts[wts[indexes[0]].send_count - 1] = items_to_send;
         
@@ -2645,8 +2642,8 @@ void* comm_listener_global_balance() {
             free(arr);
           }
           else {
-            int receive_cnt = node_receive_count(i, wts);
-            GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Node[%d]: must receive %d messages\n", i, receive_cnt);
+            unsigned long receive_cnt = dq_util_node_receive_count(i, wts);
+            GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Node[%d]: must receive %lu messages\n", i, receive_cnt);
             MPI_Send(&receive_cnt, 1, MPI_UNSIGNED_LONG, i, 803, MPI_COMM_WORLD);
           }
           cnt++;
@@ -2661,11 +2658,11 @@ void* comm_listener_global_balance() {
         if ( wts[master_id].dst_node_ids[j] !=  master_id ) {
           GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Master sending to N%ld %lu items\n", wts[master_id].dst_node_ids[j], 
             wts[master_id].item_counts[j]);
-          send_data(wts[master_id].dst_node_ids[j], wts[master_id].item_counts[j]);
+          dq_send_data_to_node(wts[master_id].dst_node_ids[j], wts[master_id].item_counts[j]);
         }
       }
 
-      int rcv_cnt = node_receive_count(master_id, wts);
+      int rcv_cnt = dq_util_node_receive_count(master_id, wts);
       if ( rcv_cnt > 0 ) {
         // Master waits for data receives
         for (int i = 0; i < rcv_cnt; i++) {
@@ -2681,14 +2678,14 @@ void* comm_listener_global_balance() {
           GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "MASTER: receive_item_count to receive=%d from node %d\n", receive_item_count, src_id);
           MPI_Recv(data, receive_item_count, MPI_INT, src_id, 804, MPI_COMM_WORLD, &status);
           
-          GLOBAL_BALANCE_LOG_DEBUG_TD(stdout, "MASTER: received these items\n");
+          GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "MASTER: received these items\n");
           for (int j = 0; j < receive_item_count; j++) {
             data2[j] = malloc(sizeof(void*));
             data2[j] = &data[j];
           }
 
-          long smallest_qid = find_smallest_q();
-          lockfree_queue_insert_N_items_no_lock_by_tid(data2, receive_item_count, &smallest_qid);
+          long smallest_qid = dq_util_find_smallest_q();
+          dq_insert_N_items_no_lock_by_tid(data2, receive_item_count, &smallest_qid);
           free(data);
           free(data2);
         }
@@ -2753,7 +2750,7 @@ void* comm_listener_global_balance() {
 
       LOCK_LOAD_BALANCER();
       LOCK_LOCAL_QUEUES();
-      unsigned long qsize = lockfree_queue_size_total();
+      unsigned long qsize = dq_local_size();
       int receive_messages_count;
       int receive_item_count;
 
@@ -2765,6 +2762,7 @@ void* comm_listener_global_balance() {
       unsigned long *work_arr = (unsigned long*) malloc(receive_messages_count * sizeof(unsigned long));
 
       if (receive_messages_count == 1) {
+        // If only 1 message is send in 803 (item count in 803), slave only receives items
         // Slave only receives data
         // In work_arr[0] is number of receives
         MPI_Recv(work_arr, receive_messages_count, MPI_UNSIGNED_LONG, master_id, 803, MPI_COMM_WORLD, &status);
@@ -2774,7 +2772,7 @@ void* comm_listener_global_balance() {
           GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Slave[%d]: has nothing to receive\n", comm_rank);
         }
         else {
-          GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Slave[%d]: has to receive %d times\n", comm_rank, receive_messages_count);
+          GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Slave[%d]: has to receive %lu times\n", comm_rank, work_arr[0]);
           
           // Wait for data receives
           for (int i = 0; i < work_arr[0]; i++) {
@@ -2794,8 +2792,8 @@ void* comm_listener_global_balance() {
               data2[j] = &data[j];
             }
 
-            long smallest_qid = find_smallest_q();
-            lockfree_queue_insert_N_items_no_lock_by_tid(data2, receive_item_count, &smallest_qid);
+            long smallest_qid = dq_util_find_smallest_q();
+            dq_insert_N_items_no_lock_by_tid(data2, receive_item_count, &smallest_qid);
             free(data);
             free(data2);
           }
@@ -2804,7 +2802,9 @@ void* comm_listener_global_balance() {
       }
       else {
         //Receive work and send it to peers
+        //if count of itesm in 803 > 1, index[0] says destination and index[1] says amount of items to send
         MPI_Recv(work_arr, receive_messages_count, MPI_UNSIGNED_LONG, master_id, 803, MPI_COMM_WORLD, &status);
+
 
         for (int i = 0; i < receive_messages_count / 2; i++) {
           unsigned long dst_node_id = work_arr[i * 2];
@@ -2813,7 +2813,7 @@ void* comm_listener_global_balance() {
           GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Slave%d: Processing message %d\n", comm_rank, i);
           GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Slave%d: has to send %lu items to node %lu\n", comm_rank, send_item_count, dst_node_id);
           
-          send_data(dst_node_id, send_item_count);
+          dq_send_data_to_node(dst_node_id, send_item_count);
         }
         GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Slave[%d]: Sending work done\n", comm_rank);
       }
@@ -2832,7 +2832,7 @@ void* comm_listener_global_balance() {
 
 }
 
-unsigned long lockfree_queue_size_by_tid (void *tid) {
+unsigned long dq_queue_size_by_tid (void *tid) {
    
   long *t = tid;
   //return atomic_load( &(queues[ *t ]->a_qsize) );
@@ -2841,7 +2841,7 @@ unsigned long lockfree_queue_size_by_tid (void *tid) {
 }
 
 
-unsigned long lockfree_queue_size_total() {
+unsigned long dq_local_size() {
 
   unsigned long size = 0;
   for (int i = 0; i < queue_count; i++) {
@@ -2879,7 +2879,7 @@ unsigned long lockfree_queue_size_total_consistent () {
    return size;
 }
 
-unsigned long* lockfree_queue_size_total_consistent_allarr () {
+unsigned long* dq_local_size_allarr_consistent () {
 
    unsigned long* sizes = (unsigned long*) malloc(queue_count * sizeof(unsigned long));
 
@@ -2893,7 +2893,7 @@ unsigned long* lockfree_queue_size_total_consistent_allarr () {
    return sizes;
 }
 
-qsizes* lockfree_queue_size_total_allarr_sorted () {
+qsizes* dq_local_size_allarr_sorted () {
 
   qsizes *qss = (qsizes*) malloc(queue_count * sizeof(qsizes));
 
@@ -2902,12 +2902,12 @@ qsizes* lockfree_queue_size_total_allarr_sorted () {
     qss[i].index = i;
   }
 
-  qsort(qss, queue_count, sizeof(qsizes), qsize_comparator);
+  qsort(qss, queue_count, sizeof(qsizes), dq_util_qsize_comparator);
 
   return qss;
 }
 
-int qsize_comparator(const void *a, const void *b) {
+int dq_util_qsize_comparator(const void *a, const void *b) {
 
   /* index 0 will be lowest size queue */
   qsizes *s1 = (qsizes*) a;
@@ -2932,7 +2932,7 @@ bool lockfree_queue_same_size() {
    return true;
 }
 
-int node_receive_count(int node_id, work_to_send *wts) {
+int dq_util_node_receive_count(int node_id, work_to_send *wts) {
 
   int send_count = 0;
 
@@ -2948,7 +2948,7 @@ int node_receive_count(int node_id, work_to_send *wts) {
 
 }
 
-int send_data(int dst, unsigned long count) {
+int dq_send_data_to_node(int dst, unsigned long count) {
 
  /*
   * Sends 'count' items to 'dst' node
@@ -2958,11 +2958,11 @@ int send_data(int dst, unsigned long count) {
   *       Or use protobuf
   */
 
-  GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Send_Data: sending %lu data to %d\n", count, dst);
+  GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "dq_send_data_to_node: sending %lu data to %d\n", count, dst);
 
   long count_tmp = count;
   unsigned long *sizes = lockfree_queue_size_total_allarr();
-  unsigned long total_size = lockfree_queue_size_total();
+  unsigned long total_size = dq_local_size();
   unsigned long q_remainder = total_size - count;
   unsigned long balanced_size = q_remainder / queue_count;
 
@@ -2989,7 +2989,7 @@ int send_data(int dst, unsigned long count) {
       for (int j = 0; j < items_to_take; j++) {
         values[j] = malloc(sizeof(void*));
       }
-      lockfree_queue_remove_Nitems_no_lock_by_tid((long) i, items_to_take, values);
+      dq_remove_Nitems_by_tid_no_lock((long) i, items_to_take, values);
 
       for (int j = 0; j < items_to_take; j++) {
         int *v = values[j];
@@ -3015,7 +3015,7 @@ int send_data(int dst, unsigned long count) {
 
 }
 
-long maxdiff_q(void* qid) {
+long dq_util_maxdiff_q(void* qid) {
 
  /*
   * TODO: Check variance of queue sizes and set threshold according to it
@@ -3024,10 +3024,10 @@ long maxdiff_q(void* qid) {
   long *q = qid;
   unsigned long diff_max = 0;
   unsigned long diff_max_id = 0;
-  unsigned long src_q_size = lockfree_queue_size_by_tid(q);
+  unsigned long src_q_size = dq_queue_size_by_tid(q);
 
   for (long i = 0; i < queue_count; i++) {
-    unsigned long diff = abs(lockfree_queue_size_by_tid(&i) - src_q_size);
+    unsigned long diff = abs(dq_queue_size_by_tid(&i) - src_q_size);
     if (diff > diff_max) {
       diff_max_id = i;
       diff_max = diff;
@@ -3043,13 +3043,13 @@ long maxdiff_q(void* qid) {
 
 }
 
-long find_largest_q() {
+long dq_util_find_largest_q() {
 
   long index = 0;
   unsigned long max = 0;
    
   for (long i = 0; i < queue_count; i++) {
-    unsigned long size = lockfree_queue_size_by_tid(&i);
+    unsigned long size = dq_queue_size_by_tid(&i);
     if ( size > max ) {
       max = size;
       index = i;
@@ -3060,13 +3060,13 @@ long find_largest_q() {
 
 }
 
-long find_smallest_q() {
+long dq_util_find_smallest_q() {
 
   long index = 0;
   unsigned long min = ULONG_MAX;
    
   for (long i = 0; i < queue_count; i++) {
-    unsigned long size = lockfree_queue_size_by_tid(&i);
+    unsigned long size = dq_queue_size_by_tid(&i);
     if ( size < min ) {
       min = size;
       index = i;
@@ -3077,7 +3077,7 @@ long find_smallest_q() {
 
 }
 
-int find_max_min_element_index(unsigned long *array, unsigned long len, int* index_max_min) {
+int dq_util_find_max_min_element_index(unsigned long *array, unsigned long len, int* index_max_min) {
 
  /*
   * index_max_min[0] is index of element with max number
@@ -3105,7 +3105,7 @@ int find_max_min_element_index(unsigned long *array, unsigned long len, int* ind
    
 }
 
-long find_max_element_index(unsigned long *array, unsigned long len) {
+long dq_util_find_max_element_index(unsigned long *array, unsigned long len) {
 
    long index = 0;
    unsigned long max = 0;
@@ -3120,7 +3120,7 @@ long find_max_element_index(unsigned long *array, unsigned long len) {
    return index;
 }
 
-void* per_time_statistics_reseter(void *arg) {
+void* dq_per_time_statistics_reseter(void *arg) {
 
   while(1) {
     usleep(500000);
@@ -3133,8 +3133,8 @@ void* per_time_statistics_reseter(void *arg) {
 
     LOG_INFO_TD("Per seconds statistics time=%d\n", (int) time(NULL));
     for (long i = 0; i < queue_count; i++) {
-      fprintf(stdout, "\tQueue[%ld] size is %ld\n", i, lockfree_queue_size_by_tid(&i));
-      LOG_INFO_TD("\tQueue[%ld] size is %ld\n", i, lockfree_queue_size_by_tid(&i));
+      fprintf(stdout, "\tQueue[%ld] size is %ld\n", i, dq_queue_size_by_tid(&i));
+      LOG_INFO_TD("\tQueue[%ld] size is %ld\n", i, dq_queue_size_by_tid(&i));
     }
     fprintf(stdout, "\n");
     LOG_INFO_TD("\tTotal removes per second=%ld\n", atomic_load(&rm_count_last));
@@ -3146,7 +3146,7 @@ void* per_time_statistics_reseter(void *arg) {
   return NULL;
 }
 
-void* local_struct_cleanup() {
+void* dq_local_struct_cleanup() {
 
   while(1) {
 
@@ -3154,24 +3154,24 @@ void* local_struct_cleanup() {
       break;
     }
  
-    sleep(1);
-    unsigned long items_cleaned = 0;
+    sleep(10);
+    //unsigned long items_cleaned = 0;
 
     for (int i = 0; i < queue_count; i++) {
-      struct ds_lockfree_queue *q = queues[i];
-      struct lockfree_queue_item *tmp;
+      struct dq_queue *q = queues[i];
+      struct dq_item *tmp;
       pthread_mutex_lock(&add_mutexes[i]);
     
       while ( q->head != q->divider ) {
         tmp = q->head;
         q->head = q->head->next;
-        //free(tmp->val); //allocated in main - can not free here
+        free(tmp->val); //allocated in main - can not free here
         free(tmp);
-        items_cleaned++;
+        //items_cleaned++;
       }
       pthread_mutex_unlock(&add_mutexes[i]);
     }
-    LOG_DEBUG_TD((long) 0, "cleaned %ld items\n", items_cleaned);
+    //LOG_DEBUG_TD((long) 0, "cleaned %ld items\n", items_cleaned);
 
   }
 
@@ -3179,7 +3179,7 @@ void* local_struct_cleanup() {
 
 }
 
-double sum_time(time_t sec, long nsec) {
+double dq_util_sum_time(time_t sec, long nsec) {
 
   double final_time = (double) 0.00;
   final_time += (double) sec;
@@ -3188,7 +3188,7 @@ double sum_time(time_t sec, long nsec) {
 
 }
 
-unsigned long sum_arr(unsigned long *arr, unsigned long len) {
+unsigned long dq_util_sum_arr(unsigned long *arr, unsigned long len) {
 
   unsigned long result = 0;
   for (int i = 0; i < len; i++) {

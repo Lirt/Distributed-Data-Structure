@@ -27,23 +27,16 @@
 /*
  * Lock-Free Queue(http://www.drdobbs.com/parallel/writing-lock-free-code-a-corrected-queue/210604448?pgno=2)
  */
-
-#ifndef LOCKFREE_QUEUE_ARGS
-  #define LOCKFREE_QUEUE_ARGS
-  struct lockfree_queue_args_struct {
-    pthread_t *callback_threads;
-  };
-#endif
  
 /*
  * QUEUE ITEM
  */
 
-#ifndef LOCKFREE_QUEUE_ITEM
-  #define LOCKFREE_QUEUE_ITEM
-	struct lockfree_queue_item {
+#ifndef DQ_ITEM
+  #define DQ_ITEM
+	struct dq_item {
 		void* val;
-    struct lockfree_queue_item *next;
+    struct dq_item *next;
 	};
 #endif
  
@@ -51,19 +44,19 @@
  * Lock-Free Queue struct
  */
 
-#ifndef DS_LOCKFREE_QUEUE
-  #define DS_LOCKFREE_QUEUE
-	struct ds_lockfree_queue {
+#ifndef DQ_QUEUE
+  #define DQ_QUEUE
+	struct dq_queue {
     size_t item_size;
     atomic_ulong a_qsize;
     unsigned long max_size;
-    struct lockfree_queue_item *head;
-    struct lockfree_queue_item *tail;
-    struct lockfree_queue_item *divider;
+    struct dq_item *head;
+    struct dq_item *tail;
+    struct dq_item *divider;
 	};
 #endif 
 
-extern struct ds_lockfree_queue **queues;
+extern struct dq_queue **queues;
 extern int queue_count;
 
 extern pthread_mutex_t local_queue_struct_mutex;
@@ -138,13 +131,13 @@ struct load_balancer_struct {
 };
 
 typedef int (*load_balancer_strategy)(void* arg);
-extern int load_balancer_pair_balance(void* lb_struct);
-extern int load_balancer_all_balance(void* lb_struct);
+extern int dq_load_balancer_pair(void* lb_struct);
+extern int dq_load_balancer_all(void* lb_struct);
 extern load_balancer_strategy lbs;
 
 typedef void* (*qsize_watcher_strategy)();
-extern void* qsize_watcher_min_max_strategy();
-extern void* qsize_watcher_local_threshold_strategy();
+extern void* dq_qsize_watcher_min_max();
+extern void* dq_qsize_watcher_local_threshold();
 extern qsize_watcher_strategy qw_strategy;
 
 typedef struct qsize_struct_sorted {
@@ -158,46 +151,45 @@ typedef struct work_to_send_struct {
   unsigned long *item_counts;  //amount of items to send to node i
 } work_to_send;
 
-extern void lockfree_queue_free(void *tid);
+extern void dq_queue_free(void *tid);
 
-extern bool lockfree_queue_is_empty_local (void *tid);
-extern bool lockfree_queue_is_empty_all_local (void);
-extern bool lockfree_queue_is_empty_all_consistent_local(void);
+extern bool dq_is_queue_empty (void *tid);
+extern bool dq_is_local_ds_empty (void);
+extern bool dq_is_local_ds_empty_consistent(void);
 
-extern void lockfree_queue_insert_item_by_tid(void *tid, void *val);
-extern void lockfree_queue_insert_item_by_tid_no_lock(void *tid, void *val);
-extern void lockfree_queue_insert_N_items_no_lock_by_tid(void** values, int item_count, void* qid);
+extern void dq_insert_item_by_tid(void *tid, void *val);
+extern void dq_insert_item_by_tid_no_lock(void *tid, void *val);
+extern void dq_insert_N_items_no_lock_by_tid(void** values, int item_count, void* qid);
 
-extern unsigned long lockfree_queue_size_by_tid(void *tid);
-extern unsigned long lockfree_queue_size_total(void);
-extern unsigned long* lockfree_queue_size_total_consistent_allarr(void);
-extern qsizes* lockfree_queue_size_total_allarr_sorted();
+extern unsigned long dq_queue_size_by_tid(void *tid);
+extern unsigned long dq_local_size(void);
+extern unsigned long* dq_local_size_allarr_consistent(void);
+extern qsizes* dq_local_size_allarr_sorted();
 
-extern void* lockfree_queue_qsize_watcher();
-extern void lockfree_queue_move_items(int q_id_from, int q_id_to, unsigned long count);
+extern void dq_move_items(int q_id_from, int q_id_to, unsigned long count);
 
-extern int lockfree_queue_remove_item_by_tid(void *tid, void* buffer);
-extern int lockfree_queue_remove_item_by_tid_no_lock(void *tid, void* buffer);
-extern int lockfree_queue_remove_Nitems_no_lock_by_tid(long qid, long item_cnt, void** buffer);
+extern int dq_remove_item_by_tid(void *tid, void* buffer);
+extern int dq_remove_Nitems_by_tid_no_lock(long qid, long item_cnt, void** buffer);
 
-extern int global_balance(long tid);
-extern void* comm_listener_global_balance();
-extern void* comm_listener_global_size();
-extern int send_data(int dst, unsigned long count);
+extern int dq_global_balance(long tid);
+extern void* dq_comm_listener_global_balance();
+extern void* dq_comm_listener_global_size();
+extern int dq_send_data_to_node(int dst, unsigned long count);
 
-extern int  getInsertionTid();
-extern int  getRemovalTid();
+extern int  dq_get_insertion_tid();
+extern int  dq_get_removal_tid();
 
-extern double sum_time(time_t sec, long nsec);
-extern struct timespec time_diff(struct timespec *start, struct timespec *end);
-extern void* per_time_statistics_reseter(void *arg);
-extern void* local_struct_cleanup();
+extern double dq_util_sum_time(time_t sec, long nsec);
+extern void* dq_per_time_statistics_reseter(void *arg);
+extern void* dq_local_struct_cleanup();
 
-extern unsigned long sum_arr(unsigned long *arr, unsigned long len);
-extern int node_receive_count(int node_id, work_to_send *wts);
-extern long maxdiff_q(void* qid);
-extern long find_largest_q();
-extern long find_smallest_q();
-extern long find_max_element_index(unsigned long *array, unsigned long len);
-extern int find_max_min_element_index(unsigned long *array, unsigned long len, int* index_max_min);
-extern int qsize_comparator(const void *a, const void *b);
+extern unsigned long dq_util_sum_arr(unsigned long *arr, unsigned long len);
+extern int dq_util_node_receive_count(int node_id, work_to_send *wts);
+extern long dq_util_maxdiff_q(void* qid);
+extern long dq_util_find_largest_q();
+extern long dq_util_find_smallest_q();
+extern long dq_util_find_max_element_index(unsigned long *array, unsigned long len);
+extern int dq_util_find_max_min_element_index(unsigned long *array, unsigned long len, int* index_max_min);
+extern int dq_util_qsize_comparator(const void *a, const void *b);
+
+

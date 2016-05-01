@@ -168,7 +168,7 @@ void *work(void *arg_struct) {
         if (rn == NULL)
           continue;
           
-        lockfree_queue_insert_item_by_tid(qid, rn);
+        dq_insert_item_by_tid(qid, rn);
         atomic_fetch_add( &total_inserts, 1 );
         n_inserted++;
         free(rn);
@@ -177,7 +177,6 @@ void *work(void *arg_struct) {
           atomic_fetch_add( &finished, 1);
           LOG_INFO_TD("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
           printf("Thread[%ld]: Inserted %lu items\n", *tid, n_inserted);
-          //printf("Queue_size[%ld] is: %ld\n", *qid, lockfree_queue_size_by_tid(qid));
 
           if (*tid == 0) {
             LOG_INFO_TD("Total inserted items is %lu\n", atomic_load(&total_inserts));
@@ -203,7 +202,7 @@ void *work(void *arg_struct) {
         if (rn == NULL)
           continue;
 
-        lockfree_queue_insert_item_by_tid(qid, rn);
+        dq_insert_item_by_tid(qid, rn);
         atomic_fetch_add( &total_inserts, 1 );
         n_inserted++;
         free(rn);
@@ -256,26 +255,27 @@ void *work(void *arg_struct) {
     int ret;
 
     while(1) {
+      //ProfilerStart("/tmp/dump.txt");
       int *retval = (int*) malloc(sizeof(int));
-      ret = lockfree_queue_remove_item_by_tid(qid, retval);
+      ret = dq_remove_item_by_tid(qid, retval);
 
       if (ret == -1) {
         free(retval);
-        unsigned long size = lockfree_queue_size_total();
+        unsigned long size = dq_local_size();
         if (size == 0) {
-          size = global_size(false);
+          size = dq_global_size(false);
           if (size != 0) {
             continue;
           }
           pthread_barrier_wait(&barrier_rm);
-        
+
           if ( *tid / 2 == 0) {
             clock_gettime(CLOCK_REALTIME, tp_rt_end);
             time_diff(tp_rt_start, tp_rt_end, result);
             LOG_INFO_TD("Total removed items %lu\n", sum_arr_t(n_removed_arr));
             printf("Total removed items %lu\n", sum_arr_t(n_removed_arr));
-            LOG_INFO_TD("Final remove realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
-            printf("Final remove realtime program time = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+            LOG_INFO_TD("Final realtime program time for remove = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
+            printf("Final realtime program time for remove = %lu sec, %lu nsec\n", result->tv_sec, result->tv_nsec );
           }
 
           LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid / 2]);
@@ -284,6 +284,7 @@ void *work(void *arg_struct) {
           //sleep(30);
 
           free(result);
+          //ProfilerStop();
           return NULL;
         }
       }
@@ -611,7 +612,7 @@ int main(int argc, char** argv) {
   atomic_init(&total_inserts, 0);
   atomic_init(&total_removes, 0);
 
-  pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
+  pthread_t *cb_threads = dq_init(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
     global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook, max_qsize);
 
@@ -621,7 +622,7 @@ int main(int argc, char** argv) {
   pthread_barrier_destroy(&barrier);
   pthread_barrier_destroy(&barrier_rm);
 
-  lockfree_queue_destroy();
+  dq_destroy();
   printf("Main finished\n");
 
   return 0;

@@ -1,6 +1,7 @@
 
 # USE export LDFLAGS="$LDFLAGS -lm" !!
 # USE export LD_PRELOAD=/usr/lib/libhoard.so
+# LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_sequential -d 1 -q 1
 
 MPICC=mpicc -cc=/usr/local/bin/gcc
 GCC=/usr/local/bin/gcc
@@ -8,10 +9,12 @@ GCC=/usr/local/bin/gcc
 CC=$(MPICC)
 HASHDIR=../uthash/src
 
-#DEB=-DDEBUG -DCOUNTERS
-DEB=-DCOUNTERS
+DEB=-DDEBUG -DCOUNTERS
+#DEB=-DCOUNTERS
+#DEB=
 DEBUG=-g
 #DEBUG=-pg
+#DEBUG=
 WARN=-Wall
 #STD=-std=c11
 STD=-std=gnu11
@@ -26,7 +29,7 @@ CFLAGS=$(STD) $(WARN) $(DEBUG) -D_POSIX_C_SOURCE=199309L -D_GNU_SOURCE $(PTHREAD
 #LINK=-lpthread
 #LINK=-lpthread -lm
 #LINK=-lm -lprofiler
-LINK=-lm
+LINK=-lm -lgsl -lgslcblas
 
 OBJDIR=obj
 LIBDIR=lib

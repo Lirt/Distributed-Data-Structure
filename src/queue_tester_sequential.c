@@ -57,6 +57,8 @@
    #include "/usr/include/mpich-x86_64/mpi.h"
 #endif
 
+#include <gsl/gsl_rng.h>
+
 /*
  * GLOBAL VARIABLES
  */
@@ -71,6 +73,7 @@ atomic_int np;
 atomic_int nc;
 
 unsigned int program_duration = 10;
+unsigned int item_amount = 0;
 unsigned int queue_count_arg = 0;
 unsigned long max_qsize = 0;
 bool load_balance_thread_arg = false;
@@ -86,8 +89,8 @@ unsigned long computation_load = 0;
 bool hook;
 pthread_barrier_t barrier;
 
-unsigned long n_inserted;
-unsigned long n_removed;
+unsigned long n_inserted = 0;
+unsigned long n_removed = 0;
 unsigned long sum;
 
 /***********
@@ -120,17 +123,19 @@ int time_diff(struct timespec *start, struct timespec *end, struct timespec *res
 
 }
 
-int *generateRandomNumber(int rangeMin, int rangeMax) {
+int *generateRandomNumber(int rangeMin, int rangeMax, gsl_rng *r) {
 
-  int *r;
-  r = (int*) malloc (sizeof(int));
-  if (r == NULL) {
+  int *rn;
+  rn = (int*) malloc (sizeof(int));
+  if (rn == NULL) {
     LOG_ERR_T((long) -1, "Malloc failed\n");
     return NULL;
   }
 
-  *r = rand() % rangeMax + rangeMin;
-  return r;
+  //*r = rand() % rangeMax + rangeMin;
+  //*r = 15;
+  *rn = gsl_rng_uniform_int(r, 25);
+  return rn;
 
 }
 
@@ -138,6 +143,12 @@ void *work(void *arg_struct) {
 
   struct q_args *args = arg_struct;
   long *tid = args->tid;
+
+  const gsl_rng_type *T;
+  gsl_rng *r;
+  T = gsl_rng_taus;
+  r = gsl_rng_alloc (T);
+  gsl_rng_set(r, *tid);
 
   if (*tid != 0) {
     return NULL;
@@ -158,39 +169,90 @@ void *work(void *arg_struct) {
   int *rn;
   int x = 0;
 
-  clock_gettime(CLOCK_REALTIME, tp_rt_start);
-  while(1) {
-    rn = generateRandomNumber(lowRange, 100);
-    if (rn == NULL)
-      continue;
+  if ( item_amount > 0 ) {
+    clock_gettime(CLOCK_REALTIME, tp_rt_start);
+    while(1) {
+      rn = generateRandomNumber(lowRange, 100, r);
+      if (rn == NULL)
+        continue;
 
-    lockfree_queue_insert_item_by_tid(&qid, rn);
-    free(rn);
-    n_inserted++;
+      dq_insert_item_by_tid(&qid, rn);
+      free(rn);
+      n_inserted++;
 
-    int *retval = (int*) malloc(sizeof(int));
-    lockfree_queue_remove_item_by_tid(&qid, retval);
-    n_removed++;
-    sum += *retval;
-    free(retval);
+      int *retval = (int*) malloc(sizeof(int));
+      dq_remove_item_by_tid(&qid, retval);
+      n_removed++;
 
-    x++;
-    if (x == 5000) {
-      x = 0;
-      clock_gettime(CLOCK_REALTIME, tp_rt_end);
-      time_diff(tp_rt_start, tp_rt_end, result);
-      if ( result->tv_sec >= program_duration ) {
-        printf("Time is up, endTime = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
-        printf("Total Inserted %lu items\n", n_inserted);
-        printf("Total removed items %lu items\n", n_removed);
-        printf("Sum of items is %lu\n", sum);
+      for (int i = 0; i < *retval; i++) {
+        *retval = log2(*retval);
+      }
+      //sum += *retval;
 
-        free(result);
-        free(tp_rt_start); free(tp_rt_end);
-        return NULL;
+      free(retval);
+
+      x++;
+      if (x == 5000) {
+        x = 0;
+        if ( n_removed >= item_amount ) {
+          clock_gettime(CLOCK_REALTIME, tp_rt_end);
+          time_diff(tp_rt_start, tp_rt_end, result);
+          printf("Final realtime program time = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
+          printf("Total Inserted %lu items\n", n_inserted);
+          printf("Total removed items %lu items\n", n_removed);
+          printf("Sum of items is %lu\n", sum);
+
+          gsl_rng_free(r);
+          free(result);
+          free(tp_rt_start); free(tp_rt_end);
+          return NULL;
+        }
       }
     }
   }
+  else if ( program_duration > 0 ) {
+    clock_gettime(CLOCK_REALTIME, tp_rt_start);
+    while(1) {
+      rn = generateRandomNumber(lowRange, 100, r);
+      if (rn == NULL)
+        continue;
+
+      dq_insert_item_by_tid(&qid, rn);
+      free(rn);
+      n_inserted++;
+
+      int *retval = (int*) malloc(sizeof(int));
+      dq_remove_item_by_tid(&qid, retval);
+      n_removed++;
+
+      for (int i = 0; i < *retval; i++) {
+        *retval = log2(*retval);
+      }
+      //sum += *retval;
+
+      free(retval);
+
+      x++;
+      if (x == 5000) {
+        x = 0;
+        clock_gettime(CLOCK_REALTIME, tp_rt_end);
+        time_diff(tp_rt_start, tp_rt_end, result);
+        if ( result->tv_sec >= program_duration ) {
+          printf("Final realtime program time = %ld sec and %ld nsec\n", result->tv_sec, result->tv_nsec);
+          printf("Total Inserted %lu items\n", n_inserted);
+          printf("Total removed items %lu items\n", n_removed);
+          printf("Sum of items is %lu\n", sum);
+
+          gsl_rng_free(r);
+          free(result);
+          free(tp_rt_start); free(tp_rt_end);
+          return NULL;
+        }
+      }
+    }
+  }
+
+  return NULL;
 
 }
 
@@ -269,6 +331,17 @@ static int parse_opt (int key, char *arg, struct argp_state *state) {
       break;
     }
 
+    case 'a': {
+      char *endptr;
+      item_amount = strtoul(arg, &endptr, 10);
+      if (endptr == arg) {
+        //LOG_ERR_T( (long) -1, "Cannot convert string to number\n");
+        fprintf (stderr, "OPT[ERROR]: 'a' Cannot convert string to number\n");
+        exit(-1);
+      }
+      printf("OPT: Amount of items to insert set to %s\n", arg);
+      break;
+    }
 
     case 150: {
       local_lb_threshold_percent = atof(arg);
@@ -521,6 +594,7 @@ int main(int argc, char** argv) {
 
   struct argp_option options[] = { 
     { "duration",                 'd', "<NUM> in seconds",0, "Sets duration of inserting items in seconds", 1},
+    { "amount",                   'a', "<NUM> in items",0, "Sets amount of items to insert", 1},
     { "queue-count",              'q', "<NUM>",           0, "Sets amount of queues on one node", 1},
     { "lb-thread",                'l', "true/false",      0, "Enables or disables dedicated load balancing thread (default false).", 2},
     { "hook",                     'h', NULL,      0, "Waits for gdb hook on pid. In gdb enter 'set var debug_wait=1' \
@@ -554,14 +628,14 @@ int main(int argc, char** argv) {
   atomic_init(&np, 0);
   atomic_init(&nc, 0);
 
-  pthread_t *cb_threads = lockfree_queue_init_callback(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
+  pthread_t *cb_threads = dq_init(work, NULL, sizeof(int), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg, 
     local_lb_threshold_percent, global_lb_threshold_percent, local_lb_threshold_static, 
     global_lb_threshold_static,  threshold_type_arg, local_balance_type_arg, hook, max_qsize);
 
   for (int i = 0; i < (queue_count_arg * TWO_TO_ONE); i++ ) {
     pthread_join(cb_threads[i], NULL);
   }
-  lockfree_queue_destroy();
+  dq_destroy();
   pthread_barrier_destroy(&barrier);
   free(q_ins_ratios); free(q_rm_ratios);
 
