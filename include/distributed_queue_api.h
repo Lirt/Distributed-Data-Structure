@@ -35,6 +35,7 @@ extern void dq_insert_N_items(void** values, int item_count);
 
 extern int dq_remove_item(void* buffer);
 extern int dq_remove_item_by_tid (void* t, void* buffer);
+extern int dq_remove_item_by_tid_no_balance (void* t, void* buffer);
 
 extern unsigned long dq_local_size(void);
 extern unsigned long dq_local_size_consistent(void);

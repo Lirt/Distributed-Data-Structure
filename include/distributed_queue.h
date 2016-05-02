@@ -169,6 +169,7 @@ extern qsizes* dq_local_size_allarr_sorted();
 extern void dq_move_items(int q_id_from, int q_id_to, unsigned long count);
 
 extern int dq_remove_item_by_tid(void *tid, void* buffer);
+extern int dq_remove_item_by_tid_no_balance (void* t, void* buffer);
 extern int dq_remove_Nitems_by_tid_no_lock(long qid, long item_cnt, void** buffer);
 
 extern int dq_global_balance(long tid);

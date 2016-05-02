@@ -1098,12 +1098,13 @@ void dq_insert_item_by_tid (void *t, void* val) {
   item->val = malloc(sizeof(q->item_size));
   memcpy(item->val, val, q->item_size);
   item->next = NULL;
-  pthread_mutex_lock(&add_mutexes[*tid]);
 
   //while ( atomic_load(&(q->a_qsize)) >= q->max_size ) {
   while ( q->a_qsize >= q->max_size ) {
     usleep(50);
   }
+
+  pthread_mutex_lock(&add_mutexes[*tid]);
 
   //set next and swap pointer to tail
   q->tail->next = item;
@@ -2008,6 +2009,34 @@ int dq_remove_item_by_tid (void* t, void* buffer) {
       atomic_fetch_add(&rm_count, 1);
     }
   #endif
+
+  if (val != NULL) {
+    memcpy(buffer, val, q->item_size);
+    return 0;
+  }
+  else {
+    return -1;
+  } 
+   
+}
+
+
+int dq_remove_item_by_tid_no_balance (void* t, void* buffer) {
+
+  void* val = NULL;
+  long* tid = t;
+
+  struct dq_queue *q = queues[ *tid ]; 
+
+  pthread_mutex_lock(&rm_mutexes[*tid]);
+
+  if ( q->divider != q->tail ) {
+    val = q->divider->next->val;
+    q->divider = q->divider->next;
+    atomic_fetch_sub( &(q->a_qsize), 1);
+  }
+
+  pthread_mutex_unlock(&rm_mutexes[*tid]);
 
   if (val != NULL) {
     memcpy(buffer, val, q->item_size);

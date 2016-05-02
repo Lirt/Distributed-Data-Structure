@@ -1,4 +1,9 @@
-#!/bin/bash -x
+#!/bin/bash
+
+#PARSING
+#sed -n '422,2059p' results_2_may.txt | grep "Final realtime program time" | grep -Eo "[0-9]+.*$"
+#sed -n '2060,6749p' results_2_may.txt | grep "Final realtime program time for remove" | grep -Eo "[0-9]+.*$"
+
 
 dir=/tmp/distributed_queue
 logfile_tmp=$dir/log_debug_
@@ -24,10 +29,10 @@ resultfile=$dir/test_results_.txt
 #			echo "" >> $resultfile
 #			echo "" >> $resultfile'
 
-process_results='pid=$(cat $dir/dds.pid)
-			logfile=$logfile_tmp$pid
-			echo $cmd >> $resultfile
-			echo "pid=$pid" >> $resultfile
+process_results='pid=$(cat $dir/dds.pid) \
+			logfile=$logfile_tmp$pid \
+			echo $cmd >> $resultfile \
+			echo "pid=$pid" >> $resultfile \
 			grep -E "Final realtime program time" $logfile >> $resultfile'
 
 amounts=(40000000 300000000 1200000000)
@@ -42,8 +47,10 @@ for a in ${amounts[@]}; do
 
 		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_sequential -q $q -a $a"
 		echo $cmd
+		#$cmd
+		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_sequential -q $q -a $a
 		sleep 3
-		$process_results
+
 	done
 done
 
@@ -58,22 +65,40 @@ for q in ${queues[@]}; do
 
 		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_insert_performance -q $q -a 80000000"
 		echo $cmd
-		$cmd
+		#$cmd
+		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_insert_performance -q $q -a 80000000
 		sleep 3
 	done
 done
 
-#TEST 3 - remove performance
-test=t3
+#TEST 3 - remove performance hoard
+test=t3a
 queues=(1 2 4 8 16 32 64 128)
 for q in ${queues[@]}; do
 	for i in $(seq 1 7); do 
-		resultfile=$dir/test_results_$test_q$q_$i.txt
-		touch $resultfile
+		#resultfile=$dir/test_results_$test_q$q_$i.txt
+		#touch $resultfile
 
 		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_remove_performance -q $q -a 80000000"
 		echo $cmd
-		$cmd
+		#$cmd
+		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_remove_performance -q $q -a 80000000
+		sleep 3
+	done
+done
+
+#TEST 3 - remove performance glibc
+test=t3b
+queues=(1 2 4 8 16 32 64 128)
+for q in ${queues[@]}; do
+	for i in $(seq 1 7); do 
+		#resultfile=$dir/test_results_$test_q$q_$i.txt
+		#touch $resultfile
+
+		cmd="LD_PRELOAD=/usr/local/lib/libgsl.so.19 bin/queue_tester_remove_performance -q $q -a 80000000"
+		echo $cmd
+		#$cmd
+		LD_PRELOAD=/usr/local/lib/libgsl.so.19 bin/queue_tester_remove_performance -q $q -a 80000000
 		sleep 3
 	done
 done
@@ -93,9 +118,15 @@ for q in ${queues[@]}; do
 
 			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 			echo $cmd
-			$cmd
+			#$cmd
+			LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
 			sleep 3
-			$process_results
+
+			pid=$(cat $dir/dds.pid)
+			logfile=$logfile_tmp$pid
+			echo $cmd >> $resultfile
+			echo "pid=$pid" >> $resultfile
+			grep -E "Final realtime program time" $logfile >> $resultfile
 
 		done
 	done
@@ -114,12 +145,17 @@ for q in ${queues[@]}; do
 			resultfile=$dir/test_results_$test_q$q_c$c_p$p_$i.txt
 			touch $resultfile
 
-			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a \ 
-			--local-balance-type=pair -s $size"
+			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 			echo $cmd
-			$cmd
+			#$cmd
+			LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
 			sleep 3
-			$process_results
+
+			pid=$(cat $dir/dds.pid)
+			logfile=$logfile_tmp$pid
+			echo $cmd >> $resultfile
+			echo "pid=$pid" >> $resultfile
+			grep -E "Final realtime program time" $logfile >> $resultfile
 
 		done
 	done
@@ -138,12 +174,17 @@ for q in ${queues[@]}; do
 			resultfile=$dir/test_results_$test_q$q_c$c_p$p_$i.txt
 			touch $resultfile
 
-			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a \ 
-			--local-balance-type=pair -s $size"
+			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 			echo $cmd
-			$cmd
+			#$cmd
+			LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
 			sleep 3
-			$process_results
+
+			pid=$(cat $dir/dds.pid)
+			logfile=$logfile_tmp$pid
+			echo $cmd >> $resultfile
+			echo "pid=$pid" >> $resultfile
+			grep -E "Final realtime program time" $logfile >> $resultfile
 
 		done
 	done
@@ -161,12 +202,18 @@ for a in ${amounts[@]}; do
 			resultfile=$dir/test_results_$test_q$q_c$c_p$p_$i.txt
 			touch $resultfile
 
-			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a \ 
-			--local-balance-type=pair -s $size"
+			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 			echo $cmd
-			$cmd
+			#$cmd
+			LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
 			sleep 3
-			$process_results
+
+			pid=$(cat $dir/dds.pid)
+			logfile=$logfile_tmp$pid
+			echo $cmd >> $resultfile
+			echo "pid=$pid" >> $resultfile
+			grep -E "Final realtime program time" $logfile >> $resultfile
+
 
 			q=4
 			c=4
@@ -175,14 +222,18 @@ for a in ${amounts[@]}; do
 			resultfile=$dir/test_results_$test_q$q_c$c_p$p_$i.txt
 			touch $resultfile
 
-			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a \ 
-			--local-balance-type=pair -s $size"
+			cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 			echo $cmd
-			$cmd
+			#$cmd
+			LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
 			sleep 3
-			$process_results
 
-		done
+			pid=$(cat $dir/dds.pid)
+			logfile=$logfile_tmp$pid
+			echo $cmd >> $resultfile
+			echo "pid=$pid" >> $resultfile
+			grep -E "Final realtime program time" $logfile >> $resultfile
+
 	done
 done
 
@@ -195,9 +246,10 @@ for a in ${amounts[@]}; do
 		p=1
 		np=2
 		size=$(echo "80000000/($q*$np)"|bc)
-		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation_debug -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
+		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 		echo $cmd
-		$cmd
+		#$cmd
+		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation_debug -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
 		sleep 3
 
 	done
@@ -211,9 +263,10 @@ for a in ${amounts[@]}; do
 		p=2
 		np=2
 		size=$(echo "80000000/($q*$np)"|bc)
-		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation_debug -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
+		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 		echo $cmd
-		$cmd
+		#$cmd
+		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation_debug -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
 		sleep 3
 
 	done
