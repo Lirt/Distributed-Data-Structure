@@ -246,10 +246,11 @@ for a in ${amounts[@]}; do
 		p=1
 		np=2
 		size=$(echo "80000000/($q*$np)"|bc)
+		amount=$(echo "$a/$np"|bc)
 		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 		echo $cmd
 		#$cmd
-		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation_debug -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
+		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation -q $q -c $c -p $p -a $amount --local-balance-type=pair -s $size
 		sleep 3
 
 	done
@@ -263,10 +264,11 @@ for a in ${amounts[@]}; do
 		p=2
 		np=2
 		size=$(echo "80000000/($q*$np)"|bc)
+		amount=$(echo "$a/$np"|bc)
 		cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size"
 		echo $cmd
 		#$cmd
-		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation_debug -q $q -c $c -p $p -a $a --local-balance-type=pair -s $size
+		LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np $np bin/queue_tester_rand_computation -q $q -c $c -p $p -a $amount --local-balance-type=pair -s $size
 		sleep 3
 
 	done

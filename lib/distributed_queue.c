@@ -1382,6 +1382,17 @@ int dq_load_balancer_pair(void* lb_struct_arg) {
     items_to_send = qsize_dst - estimated_size;
     dq_move_items(lb_struct->src_q, maxdiff_q_id, items_to_send);
   }
+  else { 
+    pthread_mutex_unlock(&add_mutexes[maxdiff_q_id]);
+    pthread_mutex_unlock(&add_mutexes[lb_struct->src_q]);
+    pthread_mutex_unlock(&rm_mutexes[maxdiff_q_id]);
+    pthread_mutex_unlock(&rm_mutexes[lb_struct->src_q]);
+    pthread_mutex_unlock(&local_queue_struct_mutex);
+    free(current_time);
+    free(tp_thr_start);
+    free(tp_thr_end);
+    return 0;
+  }
   LOAD_BALANCE_LOG_DEBUG_TD("Balancing Queue[%ld] with %ld items with Queue[%ld] with %ld items -- sending %ld items\n", 
     lb_struct->src_q, qsize_src, maxdiff_q_id, qsize_dst, items_to_send);
 
@@ -2612,6 +2623,7 @@ void* dq_comm_listener_global_balance() {
       unsigned long items_to_send;
       unsigned long estimated_size = dq_util_sum_arr(node_sizes, comm_size) / comm_size;
       work_to_send *wts = (work_to_send*) malloc(comm_size * sizeof(work_to_send));
+      int *indexes = (int*) malloc ( 2 * sizeof(int));
 
       for (int i = 0 ; i < comm_size; i++) {
         wts[i].send_count = 0;
@@ -2620,35 +2632,49 @@ void* dq_comm_listener_global_balance() {
         GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Node[%d] size is %ld\n", i, node_sizes[i]);
       }
 
-      int *indexes = (int*) malloc ( 2 * sizeof(int));
-      for (int i = 0 ; i < comm_size - 1; i++) {
-        GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Global Load balance round %d\n", i);
-        
+      if ( ( estimated_size == 0 ) && ( dq_util_sum_arr(node_sizes, comm_size) > 0 ) ) {
+        //balance can not be done, send all data to source node who asked for balance
         dq_util_find_max_min_element_index(node_sizes, comm_size, indexes);
-
-        if ( (node_sizes[indexes[0]] - (abs(node_sizes[indexes[1]] - estimated_size))) >= estimated_size )
-           items_to_send = abs(node_sizes[indexes[1]] - estimated_size);
-        else
-           items_to_send = node_sizes[indexes[0]] - estimated_size;
-
-        GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], 
-          node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
-        
-        if (indexes[0] == indexes[1]) {
-          continue;
-        }
-
-        node_sizes[indexes[0]] -= items_to_send;
-        node_sizes[indexes[1]] += items_to_send;
-
         wts[indexes[0]].send_count += 1;
         wts[indexes[0]].dst_node_ids = (long*) realloc(wts[indexes[0]].dst_node_ids, wts[indexes[0]].send_count * sizeof(long));          
         wts[indexes[0]].item_counts = (unsigned long*) realloc(wts[indexes[0]].item_counts, wts[indexes[0]].send_count * sizeof(unsigned long));
-        wts[indexes[0]].dst_node_ids[wts[indexes[0]].send_count - 1] = indexes[1];
-        wts[indexes[0]].item_counts[wts[indexes[0]].send_count - 1] = items_to_send;
-        
+        wts[indexes[0]].dst_node_ids[wts[indexes[0]].send_count - 1] = source_node;
+        wts[indexes[0]].item_counts[wts[indexes[0]].send_count - 1] = node_sizes[indexes[0]];
+          
         for (int k = 0; k < wts[indexes[0]].send_count; k++) {
-          GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "wts%d send_count=%ld; dst_node_id %ld; item_count %ld\n", indexes[0], wts[indexes[0]].send_count, wts[indexes[0]].dst_node_ids[k], wts[indexes[0]].item_counts[k]);
+          GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Estimated size == 0; wts%d send_count=%ld; dst_node_id %ld; item_count %ld\n", indexes[0], wts[indexes[0]].send_count, wts[indexes[0]].dst_node_ids[k], wts[indexes[0]].item_counts[k]);
+        }
+      }
+      else {
+        for (int i = 0 ; i < comm_size - 1; i++) {
+          GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Global Load balance round %d\n", i);
+          
+          dq_util_find_max_min_element_index(node_sizes, comm_size, indexes);
+
+          if ( (node_sizes[indexes[0]] - (abs(node_sizes[indexes[1]] - estimated_size))) >= estimated_size )
+            items_to_send = abs(node_sizes[indexes[1]] - estimated_size);
+          else if ( (node_sizes[indexes[0]] - (abs(node_sizes[indexes[1]] - estimated_size))) < estimated_size )
+            items_to_send = node_sizes[indexes[0]] - estimated_size;
+
+          GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "Max: Node[%d] with %lu --- Min: Node[%d] with %lu  ---  Sending: %lu items\n", indexes[0], 
+            node_sizes[indexes[0]], indexes[1], node_sizes[indexes[1]], items_to_send);
+          
+          if (indexes[0] == indexes[1]) {
+            continue;
+          }
+
+          node_sizes[indexes[0]] -= items_to_send;
+          node_sizes[indexes[1]] += items_to_send;
+
+          wts[indexes[0]].send_count += 1;
+          wts[indexes[0]].dst_node_ids = (long*) realloc(wts[indexes[0]].dst_node_ids, wts[indexes[0]].send_count * sizeof(long));          
+          wts[indexes[0]].item_counts = (unsigned long*) realloc(wts[indexes[0]].item_counts, wts[indexes[0]].send_count * sizeof(unsigned long));
+          wts[indexes[0]].dst_node_ids[wts[indexes[0]].send_count - 1] = indexes[1];
+          wts[indexes[0]].item_counts[wts[indexes[0]].send_count - 1] = items_to_send;
+          
+          for (int k = 0; k < wts[indexes[0]].send_count; k++) {
+            GLOBAL_BALANCE_LOG_DEBUG_TD(comm_rank, "wts%d send_count=%ld; dst_node_id %ld; item_count %ld\n", indexes[0], wts[indexes[0]].send_count, wts[indexes[0]].dst_node_ids[k], wts[indexes[0]].item_counts[k]);
+          }
         }
       }
       free(indexes);

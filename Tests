@@ -156,6 +156,44 @@ for i in $(seq 1 7); do
   sleep 3
 done
 
+for i in $(seq 1 7); do
+  echo "LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 8 -c 8 -p 4 -a 40000000 --local-balance-type=pair -s 10000000"
+  LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 8 -c 8 -p 4 -a 40000000 --local-balance-type=pair -s 10000000
+  sleep 3
+done
+
+for i in $(seq 1 7); do
+  echo "LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 8 -c 8 -p 4 -a 300000000 --local-balance-type=pair -s 10000000"
+  LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 8 -c 8 -p 4 -a 300000000 --local-balance-type=pair -s 10000000
+  sleep 3
+done
+
+for i in $(seq 1 7); do
+  echo "LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 8 -c 8 -p 4 -a 1200000000 --local-balance-type=pair -s 10000000"
+  LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 8 -c 8 -p 4 -a 1200000000 --local-balance-type=pair -s 10000000
+  sleep 3
+done
+
+amounts=(20000000 150000000 600000000)
+for a in ${amounts[@]}; do
+  for i in $(seq 1 7); do
+    cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np 2 bin/queue_tester_rand_computation -q 2 -c 2 -p 2 -a $a --local-balance-type=pair -s $size"
+    echo $cmd
+    LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 mpirun -np 2 bin/queue_tester_rand_computation -q 2 -c 2 -p 2 -a $a --local-balance-type=pair -s 20000000
+    sleep 3
+  done
+done
+
+amounts=(40000000 300000000 1200000000)
+for a in ${amounts[@]}; do
+  for i in $(seq 1 7); do
+    cmd="LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 16 -c 16 -p 16 -a $a --local-balance-type=pair -s 5000000"
+    echo $cmd
+    LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 bin/queue_tester_rand_computation -q 16 -c 16 -p 16 -a $a --local-balance-type=pair -s 5000000
+    sleep 3
+  done
+done
+
 
 valgrind --tool=callgrind bin/queue_tester_remove_performance -q 2 -a 80000000
 

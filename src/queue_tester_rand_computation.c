@@ -346,37 +346,41 @@ void *work(void *arg_struct) {
         if (size == 0) {
           unsigned long global_size_val = dq_global_size(false);
           if ( global_size_val == 0 ) {
-            unsigned long fin = atomic_load( &finished );
-            if ( fin != queue_count_arg ) {
-              continue;
-            }
-            else {
-              clock_gettime(CLOCK_REALTIME, tp_rt_end);
-              clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
+            usleep(10000);
+            global_size_val = dq_global_size(true);
+            if ( global_size_val == 0 ) {
+              unsigned long fin = atomic_load( &finished );
+              if ( fin != queue_count_arg ) {
+                continue;
+              }
+              else {
+                clock_gettime(CLOCK_REALTIME, tp_rt_end);
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, tp_thr);
 
-              struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
-              time_diff(tp_rt_start, tp_rt_end, result);
-              LOG_DEBUG_TD(*tid, "Total sum of removed items for T[%ld] is %lu\n", *tid, sum_array(sums));
-              LOG_DEBUG_TD(*tid, "Total removed items %lu\n", sum_array(n_removed_arr));
-              LOG_DEBUG_TD(*tid, "Final realtime program time = %lu.%lu\n", 
-                result->tv_sec, result->tv_nsec );
+                struct timespec *result = (struct timespec*) malloc (sizeof (struct timespec));
+                time_diff(tp_rt_start, tp_rt_end, result);
+                LOG_DEBUG_TD(*tid, "Total sum of removed items for T[%ld] is %lu\n", *tid, sum_array(sums));
+                LOG_DEBUG_TD(*tid, "Total removed items %lu\n", sum_array(n_removed_arr));
+                LOG_DEBUG_TD(*tid, "Final realtime program time = %lu.%lu\n", 
+                  result->tv_sec, result->tv_nsec );
 
-              LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid/2]);
-              LOG_INFO_TD("\tT[%ld]: Sum of items %lu\n", *tid, sums[*tid/2]);
-              LOG_INFO_TD("Total sum of removed items is %lu\n", sum_array(sums));
-              LOG_INFO_TD("Total removed items %lu\n", sum_array(n_removed_arr));
-              LOG_INFO_TD("Final realtime program time = %lu.%lu\n", 
-                result->tv_sec, result->tv_nsec );
+                LOG_INFO_TD("\tT[%ld]: Removed items %lu\n", *tid, n_removed_arr[*tid/2]);
+                LOG_INFO_TD("\tT[%ld]: Sum of items %lu\n", *tid, sums[*tid/2]);
+                LOG_INFO_TD("Total sum of removed items is %lu\n", sum_array(sums));
+                LOG_INFO_TD("Total removed items %lu\n", sum_array(n_removed_arr));
+                LOG_INFO_TD("Final realtime program time = %lu.%lu\n", 
+                  result->tv_sec, result->tv_nsec );
 
-              free(result);
-              free(qid);
-              free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
+                free(result);
+                free(qid);
+                free(tp_rt_start); free(tp_rt_start_insert); free(tp_rt_end); free(tp_rt_end_insert); free(tp_thr);
 
-              fclose(work_file_ins);
-              fclose(work_file_rm);
+                fclose(work_file_ins);
+                fclose(work_file_rm);
 
-              return NULL;
-            }
+                return NULL;
+              }
+            } // Second global size
           } //GLOBAL SIZE
         } //LOCAL SIZE
       } //RETVAL NULL
