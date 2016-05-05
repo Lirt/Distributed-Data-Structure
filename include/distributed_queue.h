@@ -24,12 +24,11 @@
    #include <stdlib.h>
 #endif
 
-/*
- * Lock-Free Queue(http://www.drdobbs.com/parallel/writing-lock-free-code-a-corrected-queue/210604448?pgno=2)
- */
+#define ONE_TO_ONE 1
+#define TWO_TO_ONE 2
  
 /*
- * QUEUE ITEM
+ * Queue item
  */
 
 #ifndef DQ_ITEM
@@ -40,8 +39,18 @@
 	};
 #endif
  
+#ifndef DQ_ARGS
+  #define DQ_ARGS
+  struct q_args {
+    void* args;
+    long* tid;
+    int q_count;
+    int t_count;
+  };
+#endif
+
 /*
- * Lock-Free Queue struct
+ * Distributed queue struct
  */
 
 #ifndef DQ_QUEUE
@@ -56,6 +65,9 @@
 	};
 #endif 
 
+/*
+ * Variables
+ */
 extern struct dq_queue **queues;
 extern int queue_count;
 
@@ -81,12 +93,6 @@ extern long **tids;
     pthread_mutex_lock(&rm_mutexes[*tids[it]]); \
   }
 
-#define LOCK_LOCAL_QUEUES_EXCEPT_RM(Q) \
-  for (int it = 0; it < queue_count; it++) { \
-    pthread_mutex_lock(&add_mutexes[*tids[it]]); \
-    if (it != Q) pthread_mutex_lock(&rm_mutexes[*tids[it]]); \
-  }
-
 #define UNLOCK_LOCAL_QUEUES() \
   for (int it = 0; it < queue_count; it++) { \
     pthread_mutex_unlock(&add_mutexes[*tids[it]]); \
@@ -94,18 +100,11 @@ extern long **tids;
   } \
   pthread_mutex_unlock(&local_queue_struct_mutex);
 
-#define UNLOCK_LOCAL_QUEUES_EXCEPT_RM(Q) \
-  for (int it = 0; it < queue_count; it++) { \
-    pthread_mutex_unlock(&add_mutexes[*tids[it]]); \
-    if (it != Q) pthread_mutex_unlock(&rm_mutexes[*tids[it]]); \
-  }
-
 #define LOCK_LOAD_BALANCER() \
   pthread_mutex_lock(&load_balance_mutex);
 
 #define UNLOCK_LOAD_BALANCER() \
   pthread_mutex_unlock(&load_balance_mutex);
-
 
 /***********
  * FUNCTIONS
@@ -151,12 +150,20 @@ typedef struct work_to_send_struct {
   unsigned long *item_counts;  //amount of items to send to node i
 } work_to_send;
 
+extern void dq_destroy(void);
 extern void dq_queue_free(void *tid);
+
+pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item_size_arg,
+  unsigned int queue_count_arg, unsigned int thread_count_arg, bool qw_thread_enable_arg, 
+  double local_lb_threshold_dynamic, double global_lb_threshold_dynamic, unsigned long local_lb_threshold_static, 
+  unsigned long global_lb_threshold_static, unsigned int local_lb_type, unsigned int local_balance_type_arg, 
+  bool hook_arg, unsigned long max_qsize );
 
 extern bool dq_is_queue_empty (void *tid);
 extern bool dq_is_local_ds_empty (void);
 extern bool dq_is_local_ds_empty_consistent(void);
 
+extern int dq_insert_item(void *val);
 extern void dq_insert_item_by_tid(void *tid, void *val);
 extern void dq_insert_item_by_tid_no_lock(void *tid, void *val);
 extern void dq_insert_N_items_no_lock_by_tid(void** values, int item_count, void* qid);
@@ -166,8 +173,13 @@ extern unsigned long dq_local_size(void);
 extern unsigned long* dq_local_size_allarr_consistent(void);
 extern qsizes* dq_local_size_allarr_sorted();
 
+extern unsigned long dq_local_size(void);
+extern unsigned long dq_local_size_consistent(void);
+extern unsigned long dq_global_size(bool consistency);
+
 extern void dq_move_items(int q_id_from, int q_id_to, unsigned long count);
 
+extern int dq_remove_item(void* buffer);
 extern int dq_remove_item_by_tid(void *tid, void* buffer);
 extern int dq_remove_item_by_tid_no_balance (void* t, void* buffer);
 extern int dq_remove_Nitems_by_tid_no_lock(long qid, long item_cnt, void** buffer);

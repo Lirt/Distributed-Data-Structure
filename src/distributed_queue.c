@@ -13,11 +13,6 @@
   #include "../include/distributed_queue.h"
 #endif
 
-#ifndef DS_QUEUE_OFFICIAL_H
-   #define DS_QUEUE_OFFICIAL_H
-   #include "../include/distributed_queue_api.h"
-#endif
-
 #ifndef PTHREAD_H
    #define PTHREAD_H
   #include <pthread.h>
@@ -68,17 +63,17 @@
    #include "/usr/include/mpich-x86_64/mpi.h"
 #endif
 
-#include "../include/uthash.h"
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <limits.h>
-
-#ifndef THREAD_STACK_SIZE
-  //#define THREAD_STACK_SIZE  65536
-  #define THREAD_STACK_SIZE  1048576  //min. 1MB
+#ifndef UTHASH_H
+  #define UTHASH_H
+  #include "../include/uthash.h"
 #endif
 
+#ifndef SYS_H
+  #define SYS_H
+  #include <sys/types.h>
+  #include <sys/stat.h>
+  #include <limits.h>
+#endif
 
 typedef struct tid_hash_struct {
     unsigned long id;      /* key */
@@ -87,17 +82,10 @@ typedef struct tid_hash_struct {
 } tid_hash_struct;
 
 /*****
- * Lock-free queue
- ***/
-/*
- * GLOBAL VARIABLES
- */
-/*****
  *
  * MPI GLOBAL VARIABLES
  */
 int comm_size, comm_rank, master_id;
-
 
 tid_hash_struct *tid_insertion_hashes = NULL;
 tid_hash_struct *tid_removal_hashes = NULL;
@@ -399,9 +387,6 @@ void dq_destroy() {
     Global balance moved %lu items\n\t", 
     atomic_load(&load_balancer_call_count_watcher), atomic_load(&load_balancer_call_count_remove), atomic_load(&load_balancer_call_count_global), atomic_load(&global_size_call_count), atomic_load(&global_size_call_count_in_wait), atomic_load(&moved_items_log), atomic_load(&global_balance_executed_as_master_count), atomic_load(&global_balance_rejected_as_master_count), atomic_load(&moved_items_global_log));
 
-  //double sum_rt_time = dq_util_sum_time(total_rt_lb_time_sec, total_rt_lb_time_nsec);
-  /*LOG_INFO_TD("\tTotal realtime spent in load balancer: %lf seconds\
-    \n\tTotal Thread time spent in load balancer: %lf seconds\n", sum_rt_time, sum_thr_time);*/
   double sum_thr_time = dq_util_sum_time(total_thr_lb_time_sec, total_thr_lb_time_nsec);
   LOG_INFO_TD("\tTotal Thread time spent in load balancer: %lf seconds\n", sum_thr_time);
    

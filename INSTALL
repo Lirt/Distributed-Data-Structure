@@ -1,3 +1,9 @@
+environment-modules-3.2.10-10.el7.x86_64
+#-L/usr/local/lib/gcc/x86_64-unknown-linux-gnu/
+module avail mpi
+module load mpi/mpich-x86_64
+dnf install environment-modules-3.2.10-16.fc23.x86_64
+
 /usr/lib64/openmpi/bin/mpicc -o test test.c
 
 gcc -Wall -o test -I/usr/include/openmpi-x86_64/ -I/usr/lib64/openmpi/ test.c
