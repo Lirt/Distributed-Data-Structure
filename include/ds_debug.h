@@ -3,7 +3,11 @@
  * COMPILE MAIN PROGRAM WHICH INCLUDES THIS FILE WITH -DDEBUG
  */
 
-#include <errno.h>
+#ifndef ERRNO_H
+	#define ERRNO_H
+	#include <errno.h>
+#endif
+
 #ifndef STDIO_H
    	#define STDIO_H
    	#include <stdio.h>
@@ -24,33 +28,27 @@ extern FILE *log_file_lb;
 		fprintf(log_file_debug, "[DEBUG]: %d %s:%d: Thread[%ld]: ", \
 			GET_TIME_INT(), __FILE__, __LINE__, THREAD); \
 		fprintf(log_file_debug, MESSAGE, ##__VA_ARGS__); \
-		fflush(log_file_debug)
+		fflush(log_file_debug);
 
-	#define LOAD_BALANCE_LOG_DEBUG_T(TIME, MESSAGE, ...) fprintf(log_file_lb, "[LB DEBUG]: (%s %s:%d): %s \n", \
-		TIME, __FILE__, __LINE__, MESSAGE, ##__VA_ARGS__)
+	#define LOAD_BALANCE_LOG_DEBUG_T(TIME, MESSAGE, ...) fprintf(log_file_lb, "[LB DEBUG]: (%s %s:%d): %s \n", TIME, __FILE__, __LINE__, MESSAGE, ##__VA_ARGS__)
 	#define LOAD_BALANCE_LOG_DEBUG_TD(MESSAGE, ...) \
-		fprintf(log_file_lb, "[LB DEBUG]: (%d %s:%d): ", \
-			GET_TIME_INT(), __FILE__, __LINE__); \
+		fprintf(log_file_lb, "[LB DEBUG]: (%d %s:%d): ", GET_TIME_INT(), __FILE__, __LINE__); \
 		fprintf(log_file_lb, MESSAGE, ##__VA_ARGS__); \
 		fflush(log_file_lb)
 
-	#define QSIZE_WATCHER_LOG_DEBUG_T(TIME, MESSAGE, ...) fprintf(log_file_qw, "[LB DEBUG]: (%s %s:%d): %s \n", \
-		TIME, __FILE__, __LINE__, MESSAGE, ##__VA_ARGS__)
+	#define QSIZE_WATCHER_LOG_DEBUG_T(TIME, MESSAGE, ...) fprintf(log_file_qw, "[LB DEBUG]: (%s %s:%d): %s \n", TIME, __FILE__, __LINE__, MESSAGE, ##__VA_ARGS__)
 	#define QSIZE_WATCHER_LOG_DEBUG_TD(MESSAGE, ...) \
-		fprintf(log_file_qw, "[LB DEBUG]: (%d %s:%d): ", \
-			GET_TIME_INT(), __FILE__, __LINE__); \
+		fprintf(log_file_qw, "[LB DEBUG]: (%d %s:%d): ", GET_TIME_INT(), __FILE__, __LINE__); \
 		fprintf(log_file_qw, MESSAGE, ##__VA_ARGS__); \
 		fflush(log_file_qw)
 	
 	#define GLOBAL_COMM_LOG_DEBUG_TD(RANK, MESSAGE, ...) \
-		fprintf(log_file_global_comm, "[GLOBAL COMMUNICATION]: (%d %s:%d): RANK[%d]: ", \
-			GET_TIME_INT(), __FILE__, __LINE__, RANK); \
+		fprintf(log_file_global_comm, "[GLOBAL COMMUNICATION]: (%d %s:%d): RANK[%d]: ", GET_TIME_INT(), __FILE__, __LINE__, RANK); \
 		fprintf(log_file_global_comm, MESSAGE, ##__VA_ARGS__); \
 		fflush(log_file_global_comm)
 
 	#define GLOBAL_BALANCE_LOG_DEBUG_TD(RANK, MESSAGE, ...) \
-		fprintf(log_file_global_bal, "[GLOBAL BALANCE]: (%d %s:%d): RANK[%d]: ", \
-			GET_TIME_INT(), __FILE__, __LINE__, RANK); \
+		fprintf(log_file_global_bal, "[GLOBAL BALANCE]: (%d %s:%d): RANK[%d]: ", GET_TIME_INT(), __FILE__, __LINE__, RANK); \
 		fprintf(log_file_global_bal, MESSAGE, ##__VA_ARGS__); \
 		fflush(log_file_global_bal)
 

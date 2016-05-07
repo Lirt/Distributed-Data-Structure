@@ -44,6 +44,7 @@
   struct q_args {
     void* args;
     long* tid;
+    long qid;
     int q_count;
     int t_count;
   };
@@ -151,24 +152,20 @@ typedef struct work_to_send_struct {
 } work_to_send;
 
 extern void dq_destroy(void);
-extern void dq_queue_free(void *tid);
+extern void dq_queue_free(long *qid);
 
-pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item_size_arg,
-  unsigned int queue_count_arg, unsigned int thread_count_arg, bool qw_thread_enable_arg, 
-  double local_lb_threshold_dynamic, double global_lb_threshold_dynamic, unsigned long local_lb_threshold_static, 
-  unsigned long global_lb_threshold_static, unsigned int local_lb_type, unsigned int local_balance_type_arg, 
-  bool hook_arg, unsigned long max_qsize );
+extern pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item_size_arg, unsigned int queue_count_arg, unsigned int thread_count_arg, bool qw_thread_enable_arg, double local_lb_threshold_percent, unsigned long local_lb_threshold_static, unsigned int threshold_type_arg, unsigned int local_balance_type_arg, bool hook_arg, unsigned long max_qsize );
 
-extern bool dq_is_queue_empty (void *tid);
-extern bool dq_is_local_ds_empty (void);
+extern bool dq_is_queue_empty(long *qid);
+extern bool dq_is_local_ds_empty(void);
 extern bool dq_is_local_ds_empty_consistent(void);
 
 extern int dq_insert_item(void *val);
-extern void dq_insert_item_by_tid(void *tid, void *val);
-extern void dq_insert_item_by_tid_no_lock(void *tid, void *val);
-extern void dq_insert_N_items_no_lock_by_tid(void** values, int item_count, void* qid);
+extern void dq_insert_item_by_tid(long *qid, void *val);
+extern void dq_insert_item_by_tid_no_lock(long *qid, void *val);
+extern void dq_insert_N_items_no_lock_by_tid(void** values, int item_count, long* qid);
 
-extern unsigned long dq_queue_size_by_tid(void *tid);
+extern unsigned long dq_queue_size_by_tid(long *qid);
 extern unsigned long dq_local_size(void);
 extern unsigned long* dq_local_size_allarr_consistent(void);
 extern qsizes* dq_local_size_allarr_sorted();
@@ -180,11 +177,11 @@ extern unsigned long dq_global_size(bool consistency);
 extern void dq_move_items(int q_id_from, int q_id_to, unsigned long count);
 
 extern int dq_remove_item(void* buffer);
-extern int dq_remove_item_by_tid(void *tid, void* buffer);
-extern int dq_remove_item_by_tid_no_balance (void* t, void* buffer);
+extern int dq_remove_item_by_tid(long *qid, void* buffer);
+extern int dq_remove_item_by_tid_no_balance (long* qid, void* buffer);
 extern int dq_remove_Nitems_by_tid_no_lock(long qid, long item_cnt, void** buffer);
 
-extern int dq_global_balance(long tid);
+extern int dq_global_balance(long qid);
 extern void* dq_comm_listener_global_balance();
 extern void* dq_comm_listener_global_size();
 extern int dq_send_data_to_node(int dst, unsigned long count);
@@ -198,7 +195,7 @@ extern void* dq_local_struct_cleanup();
 
 extern unsigned long dq_util_sum_arr(unsigned long *arr, unsigned long len);
 extern int dq_util_node_receive_count(int node_id, work_to_send *wts);
-extern long dq_util_maxdiff_q(void* qid);
+extern long dq_util_maxdiff_q(long* qid);
 extern long dq_util_find_largest_q();
 extern long dq_util_find_smallest_q();
 extern long dq_util_find_max_element_index(unsigned long *array, unsigned long len);

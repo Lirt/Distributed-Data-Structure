@@ -3,14 +3,25 @@
    #define _DEFAULT_SOURCE
 #endif
 
+#include "../include/ds_debug.h"
 #ifndef DS_DEBUG_H
    #define DS_DEBUG_H
-   #include "../include/ds_debug.h"
+   //#include "../include/ds_debug.h"
+   //#include <ds_debug.h>
 #endif
 
+#include "../include/distributed_queue.h"
 #ifndef DS_QUEUE_H
    #define DS_QUEUE_H
-  #include "../include/distributed_queue.h"
+   //#include "../include/distributed_queue.h"
+   //#include <distributed_queue.h>
+#endif
+
+#include "../include/uthash.h"
+#ifndef UTHASH_H
+  #define UTHASH_H
+  //#include "../include/uthash.h"
+  //#include <uthash.h>
 #endif
 
 #ifndef PTHREAD_H
@@ -61,11 +72,6 @@
 #ifndef MPI_H
    #define MPI_H
    #include "/usr/include/mpich-x86_64/mpi.h"
-#endif
-
-#ifndef UTHASH_H
-  #define UTHASH_H
-  #include "../include/uthash.h"
 #endif
 
 #ifndef SYS_H
@@ -453,11 +459,11 @@ void dq_destroy() {
 }
 
 
-bool dq_is_queue_empty(void *queue_id) {
+bool dq_is_queue_empty(long *qid) {
    
-   long *tid = queue_id; 
+   //long *tid = queue_id; 
    
-   struct dq_queue *q = queues[ *tid ];
+   struct dq_queue *q = queues[ *qid ];
 
    if ( atomic_load( &(q->a_qsize) ) == 0 ) {
       return true;
@@ -498,11 +504,7 @@ bool dq_is_local_ds_empty_consistent() {
    
 }
 
-pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item_size_arg,
-  unsigned int queue_count_arg, unsigned int thread_count_arg, 
-  bool qw_thread_enable_arg, double local_lb_threshold_percent, double global_lb_threshold_percent, 
-  unsigned long local_lb_threshold_static, unsigned long global_lb_threshold_static, unsigned int threshold_type_arg, 
-  unsigned int local_balance_type_arg, bool hook_arg, unsigned long max_qsize ) {
+pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item_size_arg, unsigned int queue_count_arg, unsigned int thread_count_arg, bool qw_thread_enable_arg, double local_lb_threshold_percent, unsigned long local_lb_threshold_static, unsigned int threshold_type_arg, unsigned int local_balance_type_arg, bool hook_arg, unsigned long max_qsize ) {
 
   /*
    * Local load balance type values are:
@@ -855,13 +857,13 @@ pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item
     //SET THRESHOLD
     if ( threshold_type_arg == 1 ) {
       local_threshold_static = local_lb_threshold_static;
-      global_threshold_static = global_lb_threshold_static;
+      //global_threshold_static = global_lb_threshold_static;
       threshold_type = 1;
       LOG_INFO_TD("Qsize watcher threshold type is STATIC\n");
     }
     else if ( threshold_type_arg == 2 ) {
       local_threshold_percent = local_lb_threshold_percent;
-      global_threshold_percent = global_lb_threshold_percent;
+      //global_threshold_percent = global_lb_threshold_percent;
       threshold_type = 2;
       LOG_INFO_TD("Qsize watcher threshold type is PERCENT\n");
     }
@@ -925,6 +927,7 @@ pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item
     q_args_t[i] = (struct q_args*) malloc (sizeof(struct q_args));
     q_args_t[i]->args = arguments;
     q_args_t[i]->tid = tids[i];
+    q_args_t[i]->qid = *tids[i] / (thread_count / queue_count);
     q_args_t[i]->q_count = queue_count;
     q_args_t[i]->t_count = thread_count;
     
@@ -940,17 +943,17 @@ pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item
 
 }
 
-void dq_queue_free(void *queue_id) {
+void dq_queue_free(long *qid) {
    
   /*
-   * Frees queue indexed by q_id
+   * Frees queue indexed by qid
    */
   //TODO Check if queues are init. as well in other functions.
   //Test
 
-  long *q_id = queue_id;
+  //long *qid = queue_id;
 
-  struct dq_queue *q = queues[ *q_id ]; //modulo ok?
+  struct dq_queue *q = queues[ *qid ]; //modulo ok?
 
   struct dq_item *item;
   struct dq_item *item_tmp;
@@ -1068,9 +1071,9 @@ void lockfree_queue_insert_item_no_lock (void* val) {
 
 }
 
-void dq_insert_item_by_tid (void *t, void* val) {
+void dq_insert_item_by_tid (long *tid, void* val) {
 
-  long *tid = t;
+  //long *tid = t;
   struct dq_queue *q = queues[ *tid ];
 
   struct dq_item *item = (struct dq_item*) malloc (sizeof(struct dq_item));
@@ -1114,9 +1117,9 @@ void dq_insert_item_by_tid (void *t, void* val) {
   pthread_mutex_unlock(&add_mutexes[*tid]);
 }
 
-void dq_insert_item_by_tid_no_lock (void *t, void* val) {
+void dq_insert_item_by_tid_no_lock (long *tid, void* val) {
 
-   long *tid = t;
+   //long *tid = t;
    struct dq_queue *q = queues[ *tid ];
 
    struct dq_item *item = (struct dq_item*) malloc (sizeof(struct dq_item));
@@ -1236,7 +1239,7 @@ void lockfree_queue_insert_N_items (void** values, int item_count) {
    
 }
 
-void dq_insert_N_items_no_lock_by_tid (void** values, int item_count, void *qid) {
+void dq_insert_N_items_no_lock_by_tid (void** values, int item_count, long *qid) {
 
   if ( item_count == 0 ) {
     return;
@@ -1245,8 +1248,8 @@ void dq_insert_N_items_no_lock_by_tid (void** values, int item_count, void *qid)
     return;
   }
 
-  long *tid = qid;
-  struct dq_queue *q = queues[ *tid ];
+  //long *tid = qid;
+  struct dq_queue *q = queues[ *qid ];
 
   struct dq_item *item;
   struct dq_item *item_tmp;
@@ -1256,7 +1259,7 @@ void dq_insert_N_items_no_lock_by_tid (void** values, int item_count, void *qid)
 
   if (item == NULL) {
     fprintf(stdout, "ERROR: Malloc failed in insert_N_items_no_lock_by_tid\n");
-    LOG_ERR_T( (long) tid, "Malloc failed\n");
+    LOG_ERR_T( (long) *qid, "Malloc failed\n");
     return;
   }
 
@@ -1267,12 +1270,12 @@ void dq_insert_N_items_no_lock_by_tid (void** values, int item_count, void *qid)
   for (int i = 1; i < item_count; i++) {
     item_tmp = (struct dq_item*) malloc (sizeof(struct dq_item));
     if (item_tmp == NULL) {
-      LOG_ERR_T( (long) tid, "Malloc failed\n");
+      LOG_ERR_T( (long) *qid, "Malloc failed\n");
       return;
     }
     item_tmp->val = malloc(sizeof(void*));
     if (item_tmp->val == NULL) {
-      LOG_ERR_T( (long) tid, "Malloc failed\n");
+      LOG_ERR_T( (long) *qid, "Malloc failed\n");
       return;
     }
     memcpy(item_tmp->val, values[i], q->item_size);
@@ -1942,10 +1945,10 @@ int lockfree_queue_remove_item (void* buffer) {
    
 }
 
-int dq_remove_item_by_tid (void* t, void* buffer) {
+int dq_remove_item_by_tid (long* tid, void* buffer) {
 
   void* val = NULL;
-  long* tid = t;
+  //long* tid = t;
 
   struct dq_queue *q = queues[ *tid ]; 
 
@@ -2017,10 +2020,10 @@ int dq_remove_item_by_tid (void* t, void* buffer) {
 }
 
 
-int dq_remove_item_by_tid_no_balance (void* t, void* buffer) {
+int dq_remove_item_by_tid_no_balance (long* tid, void* buffer) {
 
   void* val = NULL;
-  long* tid = t;
+  //long* tid = t;
 
   struct dq_queue *q = queues[ *tid ]; 
 
@@ -2872,7 +2875,7 @@ void* dq_comm_listener_global_balance() {
 
 }
 
-unsigned long dq_queue_size_by_tid (void *tid) {
+unsigned long dq_queue_size_by_tid (long *tid) {
    
   long *t = tid;
   //return atomic_load( &(queues[ *t ]->a_qsize) );
@@ -3055,16 +3058,16 @@ int dq_send_data_to_node(int dst, unsigned long count) {
 
 }
 
-long dq_util_maxdiff_q(void* qid) {
+long dq_util_maxdiff_q(long* qid) {
 
  /*
   * TODO: Check variance of queue sizes and set threshold according to it
   */
 
-  long *q = qid;
+  //long *q = qid;
   unsigned long diff_max = 0;
   unsigned long diff_max_id = 0;
-  unsigned long src_q_size = dq_queue_size_by_tid(q);
+  unsigned long src_q_size = dq_queue_size_by_tid(qid);
 
   for (long i = 0; i < queue_count; i++) {
     unsigned long diff = abs(dq_queue_size_by_tid(&i) - src_q_size);
@@ -3074,7 +3077,7 @@ long dq_util_maxdiff_q(void* qid) {
     }
   }
 
-  if (*q == diff_max_id) {
+  if (*qid == diff_max_id) {
     return -1;
   }
   else {
