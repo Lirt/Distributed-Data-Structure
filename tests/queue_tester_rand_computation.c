@@ -85,7 +85,7 @@ unsigned long local_lb_threshold_static = 0;
 unsigned long global_lb_threshold_static = 0;
 unsigned int *q_ins_ratios = NULL;
 unsigned int *q_rm_ratios = NULL;
-unsigned long computation_load = 0;
+unsigned long computation_load = 25;
 bool hook;
 pthread_barrier_t barrier;
 
@@ -137,7 +137,7 @@ int *generateRandomNumber(int rangeMin, int rangeMax, gsl_rng *r) {
 
   //*r = rand() % rangeMax + rangeMin;
   //*r = 15;
-  *rn = gsl_rng_uniform_int(r, 20);
+  *rn = gsl_rng_uniform_int(r, computation_load);
   return rn;
 
 }

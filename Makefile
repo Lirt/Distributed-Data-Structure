@@ -23,12 +23,12 @@ install:
 	cp lib/libdq_debug.so /usr/lib/
 	cp lib/libdq.so /usr/lib/
 	cp lib/libhoard.so /usr/lib/
-	#cp libdq_debug.so /usr/lib64/
-	#cp libdq.so /usr/lib64/
-	#cp libdq_debug.so /usr/local/lib/
-	#cp libdq.so /usr/local/lib/
-	#cp libdq_debug.so /usr/local/lib64/
-	#cp libdq.so /usr/local/lib64/
+	cp lib/libdq_debug.so /usr/lib64/
+	cp lib/libdq.so /usr/lib64/
+	cp lib/libdq_debug.so /usr/local/lib/
+	cp lib/libdq.so /usr/local/lib/
+	cp lib/libdq_debug.so /usr/local/lib64/
+	cp lib/libdq.so /usr/local/lib64/
 	cp include/distributed_queue_api.h /usr/include/
 	cp include/distributed_queue_api.h /usr/local/include/
 

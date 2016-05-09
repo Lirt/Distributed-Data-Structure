@@ -675,8 +675,8 @@ pthread_t* dq_init ( void* (*callback)(void *args), void* arguments, size_t item
   else {
     max_qsize_tmp = max_qsize;
   }
-  LOG_INFO_TD("MAX QUEUE SIZE: %lu items\n", max_qsize_tmp);  
-  fprintf(stdout, "MAX QUEUE SIZE: %lu items\n", max_qsize_tmp);  
+  LOG_INFO_TD("MAX QUEUE SIZE: %lu items\n", max_qsize_tmp);
+  fprintf(stdout, "MAX QUEUE SIZE: %lu items\n", max_qsize_tmp);
 
   LOG_INFO_TD("Size of queue items is set to %lu\n", item_size_arg);
   fprintf(stdout, "Size of queue items is set to %lu\n", item_size_arg);

@@ -81,7 +81,7 @@ double global_lb_threshold_percent = 0.0;
 unsigned long local_lb_threshold_static = 0;
 unsigned long global_lb_threshold_static = 0;
 unsigned int *q_ratios = NULL;
-unsigned long computation_load = 0;
+unsigned long computation_load = 25;
 bool hook = false;
 
 unsigned long *n_inserted_arr;
@@ -562,6 +562,7 @@ int main(int argc, char** argv) {
   atomic_init(&finished, 0);
   atomic_init(&total_inserts, 0);
   atomic_init(&total_removes, 0);
+  max_qsize = 0;
 
   pthread_t *cb_threads = dq_init(work, NULL, sizeof(int*), queue_count_arg, TWO_TO_ONE, load_balance_thread_arg,
     local_lb_threshold_percent, local_lb_threshold_static, threshold_type_arg, local_balance_type_arg, hook, max_qsize );

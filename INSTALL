@@ -4,46 +4,8 @@ module avail mpi
 module load mpi/mpich-x86_64
 dnf install environment-modules-3.2.10-16.fc23.x86_64
 
-/usr/lib64/openmpi/bin/mpicc -o test test.c
 
-gcc -Wall -o test -I/usr/include/openmpi-x86_64/ -I/usr/lib64/openmpi/ test.c
-
-mpirun -np 1 rng_master : -np 4 rng_client
-mpirun localhost -np 1 rng_master : localhost -np 4 rng_client
-mpirun --map-by core ./test
-mpirun -npernode 4 ./test
-
-
-mpirun -np 2 bin/queue_tester_rand_computation -d 10 -q 4 -l true --q1-ratio=9 --q2-ratio=8 --q3-ratio=7 --q4-ratio=12 --local-threshold-type=dynamic --local-balance-type=all
-
-free && sync && echo 3 > /proc/sys/vm/drop_caches && free
-earlyoom -i -m 40 -s 100
-
-mpirun -np 4 bin/queue_tester_rand_computation -d 30 -q 4 -p 4 -c 4 -l false --local-balance-type=pair -s 5000000
-
-bin/queue_tester_rand_computation -d 30 -q 4 -p 4 -c 4 -l false --local-balance-type=pair -s 15000000
-bin/queue_tester_rand_computation_debug -d 100 -q 4 -p 4 -c 1 -l false --local-balance-type=pair -s 20000000
-
-valgrind --leak-check=full --show-leak-kinds=all bin/queue_tester_rand_computation -d 10 -q 4 -p 4 -c 4 -l false --local-balance-type=pair -s 5000000
-
---trace-children=<yes
---free-fill=<hexnumber>
-
-mpirun -np 4 valgrind --leak-check=full --show-leak-kinds=all bin/queue_tester_rand_computation -d 6 -q 4 -p 4 -c 4 -l false --local-balance-type=pair -s 5000000
-
-cat *rm*28594 > x_rm; sort x_rm > x_rm_s1
-cat *rm*28595 > x_rm; sort x_rm > x_rm_s2
-cat *rm*28596 > x_rm; sort x_rm > x_rm_s3
-cat *rm*28597 > x_rm; sort x_rm > x_rm_s4
-cat *ins*28594 > x_ins; sort x_ins > x_ins_s1
-cat *ins*28595 > x_ins; sort x_ins > x_ins_s2
-cat *ins*28596 > x_ins; sort x_ins > x_ins_s3
-cat *ins*28597 > x_ins; sort x_ins > x_ins_s4
-diff x_rm_s x_ins_s
-
-
-set var debug_wait=1
-cont
-
-#LATEX SYNTAX
-vi /usr/lib/python2.7/site-packages/pygments/lexers/shell.py
+Fedora 23:
+gcc --version
+dnf install -y git mpich 
+dnf install -y environment-modules-3.2.10-16.fc23.x86_64 gsl
