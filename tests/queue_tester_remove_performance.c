@@ -56,8 +56,6 @@
    #include "/usr/include/mpich-x86_64/mpi.h"
 #endif
 
-#include <gperftools/profiler.h>
-
 /*
  * GLOBAL VARIABLES
  */

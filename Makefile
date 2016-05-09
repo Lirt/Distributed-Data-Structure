@@ -1,8 +1,10 @@
 
 #To run with libhoard and gsl random functions use LD_PRELOAD=/usr/lib/libhoard.so:/usr/local/lib/libgsl.so.19 <program>
 
-MPICC=mpicc -cc=/usr/local/bin/gcc
-GCC=/usr/local/bin/gcc
+#MPICC=mpicc -cc=/usr/local/bin/gcc
+#GCC=/usr/local/bin/gcc
+MPICC=mpicc
+GCC=gcc
 CC=$(MPICC)
 
 DEB=-DDEBUG -DCOUNTERS
@@ -12,7 +14,6 @@ STD=-std=gnu11
 PTHREAD=-pthread
 CFLAGS=$(STD) $(WARN) $(DEBUG) -D_POSIX_C_SOURCE=199309L -D_GNU_SOURCE $(PTHREAD)
 
-#link -lprofiler for gprof
 LINK=-lm -lgsl -lgslcblas -ldq
 
 INCLUDES=-I. -Iinclude
@@ -34,6 +35,7 @@ install:
 
 #all: tests/queue_tester_rand_computation.c tests/queue_tester_sequential.c tests/queue_tester_insert_performance.c tests/queue_tester_remove_performance.c
 all: 
+	mkdir bin
 	$(CC) $(CFLAGS) $(DEB)  -o bin/queue_tester_sequential_debug  tests/queue_tester_sequential.c $(LINK)
 	$(CC) $(CFLAGS) -o bin/queue_tester_sequential tests/queue_tester_sequential.c  $(LINK)
 	$(CC) $(CFLAGS) $(DEB) -o bin/queue_tester_rand_computation_debug tests/queue_tester_rand_computation.c $(LINK)
